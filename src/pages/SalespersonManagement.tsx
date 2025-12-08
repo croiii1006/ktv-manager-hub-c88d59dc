@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Minus } from 'lucide-react';
 import { useDataStore } from '@/contexts/DataStore';
 import ShopSelect from '@/components/ShopSelect';
 import LeaderSelect from '@/components/LeaderSelect';
@@ -23,6 +23,24 @@ export default function SalespersonManagement() {
   const [selectedSales, setSelectedSales] = useState<Salesperson | null>(null);
   const [modalType, setModalType] = useState<'recharge' | 'consume' | null>(null);
   const [consumeDetailId, setConsumeDetailId] = useState<string | null>(null);
+  const [deleteMode, setDeleteMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const toggleSelect = (id: string) => {
+    const newSet = new Set(selectedIds);
+    if (newSet.has(id)) {
+      newSet.delete(id);
+    } else {
+      newSet.add(id);
+    }
+    setSelectedIds(newSet);
+  };
+
+  const handleDeleteSalespersons = () => {
+    setSalespersons(salespersons.filter((sp) => !selectedIds.has(sp.salesId)));
+    setSelectedIds(new Set());
+    setDeleteMode(false);
+  };
 
   const handleAddSalesperson = () => {
     const newId = generateSalesId();
@@ -78,6 +96,11 @@ export default function SalespersonManagement() {
       <table className="w-full">
         <thead>
           <tr className="bg-muted/50 border-b border-border">
+            {deleteMode && (
+              <th className="px-2 py-3 text-left text-sm font-medium text-muted-foreground w-10">
+                选择
+              </th>
+            )}
             <th className="px-3 py-3 text-left text-sm font-medium text-muted-foreground">
               业务员编号
             </th>
@@ -107,6 +130,16 @@ export default function SalespersonManagement() {
               key={sp.salesId}
               className="border-b border-border hover:bg-muted/30 transition-colors"
             >
+              {deleteMode && (
+                <td className="px-2 py-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(sp.salesId)}
+                    onChange={() => toggleSelect(sp.salesId)}
+                    className="h-4 w-4 rounded border-border"
+                  />
+                </td>
+              )}
               <td className="px-3 py-3 text-sm font-mono text-foreground">
                 {sp.salesId}
               </td>
@@ -187,14 +220,44 @@ export default function SalespersonManagement() {
             </tr>
           ))}
           <tr className="hover:bg-muted/30 transition-colors">
-            <td className="px-3 py-3" colSpan={7}>
-              <button
-                onClick={handleAddSalesperson}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary hover:bg-accent rounded-md transition-colors"
-              >
-                <Plus className="h-4 w-4" />
-                添加业务员
-              </button>
+            <td className="px-3 py-3" colSpan={deleteMode ? 8 : 7}>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleAddSalesperson}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary hover:bg-accent rounded-md transition-colors"
+                >
+                  <Plus className="h-4 w-4" />
+                  添加业务员
+                </button>
+                {!deleteMode ? (
+                  <button
+                    onClick={() => setDeleteMode(true)}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 rounded-md transition-colors"
+                  >
+                    <Minus className="h-4 w-4" />
+                    删除
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      onClick={handleDeleteSalespersons}
+                      disabled={selectedIds.size === 0}
+                      className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 rounded-md transition-colors disabled:opacity-50"
+                    >
+                      确认删除 ({selectedIds.size})
+                    </button>
+                    <button
+                      onClick={() => {
+                        setDeleteMode(false);
+                        setSelectedIds(new Set());
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-accent rounded-md transition-colors"
+                    >
+                      取消
+                    </button>
+                  </>
+                )}
+              </div>
             </td>
           </tr>
         </tbody>
