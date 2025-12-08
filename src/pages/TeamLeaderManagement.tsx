@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Minus } from 'lucide-react';
 import { useDataStore } from '@/contexts/DataStore';
 import ShopSelect from '@/components/ShopSelect';
 import { TeamLeader } from '@/types';
@@ -7,6 +7,24 @@ import { TeamLeader } from '@/types';
 export default function TeamLeaderManagement() {
   const { teamLeaders, setTeamLeaders, generateLeaderId } = useDataStore();
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteMode, setDeleteMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const toggleSelect = (id: string) => {
+    const newSet = new Set(selectedIds);
+    if (newSet.has(id)) {
+      newSet.delete(id);
+    } else {
+      newSet.add(id);
+    }
+    setSelectedIds(newSet);
+  };
+
+  const handleDelete = () => {
+    setTeamLeaders(teamLeaders.filter((l) => !selectedIds.has(l.leaderId)));
+    setSelectedIds(new Set());
+    setDeleteMode(false);
+  };
 
   const handleAddLeader = () => {
     const newId = generateLeaderId();
@@ -38,6 +56,11 @@ export default function TeamLeaderManagement() {
       <table className="w-full">
         <thead>
           <tr className="bg-muted/50 border-b border-border">
+            {deleteMode && (
+              <th className="px-2 py-3 text-left text-sm font-medium text-muted-foreground w-10">
+                选择
+              </th>
+            )}
             <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">
               队长编号
             </th>
@@ -61,6 +84,16 @@ export default function TeamLeaderManagement() {
               key={leader.leaderId}
               className="border-b border-border hover:bg-muted/30 transition-colors"
             >
+              {deleteMode && (
+                <td className="px-2 py-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(leader.leaderId)}
+                    onChange={() => toggleSelect(leader.leaderId)}
+                    className="h-4 w-4 rounded border-border"
+                  />
+                </td>
+              )}
               <td className="px-4 py-3 text-sm font-mono text-foreground">
                 {leader.leaderId}
               </td>
@@ -109,14 +142,44 @@ export default function TeamLeaderManagement() {
             </tr>
           ))}
           <tr className="hover:bg-muted/30 transition-colors">
-            <td className="px-4 py-3" colSpan={5}>
-              <button
-                onClick={handleAddLeader}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary hover:bg-accent rounded-md transition-colors"
-              >
-                <Plus className="h-4 w-4" />
-                添加队长
-              </button>
+            <td className="px-4 py-3" colSpan={deleteMode ? 6 : 5}>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleAddLeader}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary hover:bg-accent rounded-md transition-colors"
+                >
+                  <Plus className="h-4 w-4" />
+                  添加队长
+                </button>
+                {!deleteMode ? (
+                  <button
+                    onClick={() => setDeleteMode(true)}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 rounded-md transition-colors"
+                  >
+                    <Minus className="h-4 w-4" />
+                    删除
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      onClick={handleDelete}
+                      disabled={selectedIds.size === 0}
+                      className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 rounded-md transition-colors disabled:opacity-50"
+                    >
+                      确认删除 ({selectedIds.size})
+                    </button>
+                    <button
+                      onClick={() => {
+                        setDeleteMode(false);
+                        setSelectedIds(new Set());
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-accent rounded-md transition-colors"
+                    >
+                      取消
+                    </button>
+                  </>
+                )}
+              </div>
             </td>
           </tr>
         </tbody>
