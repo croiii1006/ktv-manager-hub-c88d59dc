@@ -1,13 +1,41 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import { useState } from 'react';
+import { DataStoreProvider } from '@/contexts/DataStore';
+import Layout from '@/components/Layout';
+import TeamLeaderManagement from './TeamLeaderManagement';
+import SalespersonManagement from './SalespersonManagement';
+import UserManagement from './UserManagement';
+import RechargeRecords from './RechargeRecords';
+import ConsumeRecords from './ConsumeRecords';
+import RoomBooking from './RoomBooking';
 
 const Index = () => {
+  const [currentPage, setCurrentPage] = useState('team-leaders');
+
+  const renderPage = () => {
+    switch (currentPage) {
+      case 'team-leaders':
+        return <TeamLeaderManagement />;
+      case 'salespersons':
+        return <SalespersonManagement />;
+      case 'users':
+        return <UserManagement />;
+      case 'recharge':
+        return <RechargeRecords />;
+      case 'consume':
+        return <ConsumeRecords />;
+      case 'rooms':
+        return <RoomBooking />;
+      default:
+        return <TeamLeaderManagement />;
+    }
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
-      </div>
-    </div>
+    <DataStoreProvider>
+      <Layout currentPage={currentPage} onPageChange={setCurrentPage}>
+        {renderPage()}
+      </Layout>
+    </DataStoreProvider>
   );
 };
 
