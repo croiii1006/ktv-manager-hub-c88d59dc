@@ -1,7 +1,14 @@
 import { useState, useMemo } from 'react';
-import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { ChevronUp, ChevronDown, ChevronsUpDown, Image } from 'lucide-react';
 import { useDataStore } from '@/contexts/DataStore';
 import { ConsumeRecord } from '@/types';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 
 type SortDirection = 'asc' | 'desc' | null;
 type SortKey = keyof ConsumeRecord | null;
@@ -10,6 +17,7 @@ export default function ConsumeRecords() {
   const { consumeRecords } = useDataStore();
   const [sortKey, setSortKey] = useState<SortKey>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
+  const [selectedVoucher, setSelectedVoucher] = useState<string | null>(null);
 
   const handleSort = (key: keyof ConsumeRecord) => {
     if (sortKey === key) {
@@ -60,6 +68,7 @@ export default function ConsumeRecords() {
 
   const columns: { key: keyof ConsumeRecord; label: string }[] = [
     { key: 'date', label: '日期' },
+    { key: 'time', label: '时间' },
     { key: 'memberId', label: '会员卡号' },
     { key: 'cardType', label: '卡类型' },
     { key: 'memberName', label: '姓名' },
@@ -68,7 +77,10 @@ export default function ConsumeRecords() {
     { key: 'amount', label: '消费金额' },
     { key: 'balance', label: '余额' },
     { key: 'salesName', label: '业务员' },
+    { key: 'serviceSalesName', label: '服务业务员' },
     { key: 'shop', label: '店铺' },
+    { key: 'roomNumber', label: '房间号' },
+    { key: 'paymentMethod', label: '支付方式' },
     { key: 'content', label: '消费内容' },
     { key: 'remark', label: '备注' },
   ];
@@ -91,13 +103,16 @@ export default function ConsumeRecords() {
                   </div>
                 </th>
               ))}
+              <th className="px-3 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap">
+                支付凭证
+              </th>
             </tr>
           </thead>
           <tbody>
             {sortedRecords.length === 0 ? (
               <tr>
                 <td
-                  colSpan={columns.length}
+                  colSpan={columns.length + 1}
                   className="px-3 py-8 text-center text-muted-foreground"
                 >
                   暂无消费记录
@@ -111,6 +126,9 @@ export default function ConsumeRecords() {
                 >
                   <td className="px-3 py-3 text-sm whitespace-nowrap">
                     {record.date}
+                  </td>
+                  <td className="px-3 py-3 text-sm whitespace-nowrap">
+                    {record.time || '-'}
                   </td>
                   <td className="px-3 py-3 text-sm font-mono whitespace-nowrap">
                     {record.memberId}
@@ -137,7 +155,16 @@ export default function ConsumeRecords() {
                     {record.salesName}
                   </td>
                   <td className="px-3 py-3 text-sm whitespace-nowrap">
+                    {record.serviceSalesName || '-'}
+                  </td>
+                  <td className="px-3 py-3 text-sm whitespace-nowrap">
                     {record.shop}
+                  </td>
+                  <td className="px-3 py-3 text-sm whitespace-nowrap">
+                    {record.roomNumber || '-'}
+                  </td>
+                  <td className="px-3 py-3 text-sm whitespace-nowrap">
+                    {record.paymentMethod || '-'}
                   </td>
                   <td className="px-3 py-3 text-sm">
                     {record.content}
@@ -145,12 +172,43 @@ export default function ConsumeRecords() {
                   <td className="px-3 py-3 text-sm text-muted-foreground">
                     {record.remark || '-'}
                   </td>
+                  <td className="px-3 py-3 text-sm">
+                    {record.paymentVoucher ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setSelectedVoucher(record.paymentVoucher!)}
+                      >
+                        <Image className="h-4 w-4" />
+                      </Button>
+                    ) : (
+                      '-'
+                    )}
+                  </td>
                 </tr>
               ))
             )}
           </tbody>
         </table>
       </div>
+
+      {/* Voucher Preview Modal */}
+      <Dialog open={!!selectedVoucher} onOpenChange={() => setSelectedVoucher(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>支付凭证</DialogTitle>
+          </DialogHeader>
+          {selectedVoucher && (
+            <div className="flex justify-center">
+              <img
+                src={selectedVoucher}
+                alt="支付凭证"
+                className="max-h-96 rounded-md border border-border"
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

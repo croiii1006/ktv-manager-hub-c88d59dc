@@ -63,9 +63,9 @@ const initialRechargeRecords: RechargeRecord[] = [
 ];
 
 const initialConsumeRecords: ConsumeRecord[] = [
-  { id: 'X001', date: '2024-12-02', memberId: 'A0000001', memberName: '陈小明', cardType: '白金卡', phone: '13700001111', idNumber: '310101199001011234', amount: -500, balance: 4500, giftBalance: 1000, salesId: 'Y0000001', salesName: '张三', shop: '淮海路店', consumeType: '订房', content: '大包厢消费', remark: '', roomNumber: '888', bookingDate: '2024-12-02' },
-  { id: 'X002', date: '2024-12-03', memberId: 'A0000002', memberName: '刘芳芳', cardType: '黄金卡', phone: '13700002222', idNumber: '310101199202022345', amount: -300, balance: 2700, giftBalance: 500, salesId: 'Y0000001', salesName: '张三', shop: '淮海路店', consumeType: '订房', content: '中包厢消费', remark: '生日派对', roomNumber: '666', bookingDate: '2024-12-03' },
-  { id: 'X003', date: '2024-12-04', memberId: 'A0000003', memberName: '赵大力', cardType: '铂金卡', phone: '13700003333', idNumber: '310101199303033456', amount: -1000, balance: 7000, giftBalance: 2000, salesId: 'Y0000002', salesName: '李四', shop: '上海店', consumeType: '订房', content: '至尊包厢消费', remark: '商务接待', roomNumber: '999', bookingDate: '2024-12-04' },
+  { id: 'X001', date: '2024-12-02', time: '14:30', memberId: 'A0000001', memberName: '陈小明', cardType: '白金卡', phone: '13700001111', idNumber: '310101199001011234', amount: -500, balance: 4500, giftBalance: 1000, salesId: 'Y0000001', salesName: '张三', serviceSalesId: 'Y0000002', serviceSalesName: '李四', shop: '淮海路店', consumeType: '订房', content: '大包厢消费', remark: '', roomNumber: '888', bookingDate: '2024-12-02', paymentMethod: '余额', paymentVoucher: '' },
+  { id: 'X002', date: '2024-12-03', time: '19:00', memberId: 'A0000002', memberName: '刘芳芳', cardType: '黄金卡', phone: '13700002222', idNumber: '310101199202022345', amount: -300, balance: 2700, giftBalance: 500, salesId: 'Y0000001', salesName: '张三', serviceSalesId: 'Y0000001', serviceSalesName: '张三', shop: '淮海路店', consumeType: '订房', content: '中包厢消费', remark: '生日派对', roomNumber: '666', bookingDate: '2024-12-03', paymentMethod: '现金', paymentVoucher: '' },
+  { id: 'X003', date: '2024-12-04', time: '20:15', memberId: 'A0000003', memberName: '赵大力', cardType: '铂金卡', phone: '13700003333', idNumber: '310101199303033456', amount: -1000, balance: 7000, giftBalance: 2000, salesId: 'Y0000002', salesName: '李四', serviceSalesId: 'Y0000003', serviceSalesName: '王五', shop: '上海店', consumeType: '订房', content: '至尊包厢消费', remark: '商务接待', roomNumber: '999', bookingDate: '2024-12-04', paymentMethod: '团购', paymentVoucher: '' },
 ];
 
 const initialRooms: Room[] = [
