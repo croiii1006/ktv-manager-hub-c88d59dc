@@ -45,11 +45,14 @@ export interface RechargeRecord {
   remark: string;
   balance: number;
   giftBalance: number;
+  voucher?: string;
+  giftProductRemark?: string;
 }
 
 export interface ConsumeRecord {
   id: string;
   date: string;
+  time?: string;
   memberId: string;
   memberName: string;
   cardType: string;
@@ -60,12 +63,16 @@ export interface ConsumeRecord {
   giftBalance: number;
   salesId: string;
   salesName: string;
+  serviceSalesId?: string;
+  serviceSalesName?: string;
   shop: string;
   consumeType: string;
   content: string;
   remark: string;
   roomNumber?: string;
   bookingDate?: string;
+  paymentMethod?: string;
+  paymentVoucher?: string;
 }
 
 export interface Room {
@@ -86,9 +93,33 @@ export interface RoomBooking {
   customerId?: string;
   salesId?: string;
   salesName?: string;
+  serviceSalesId?: string;
+  serviceSalesName?: string;
   price: number;
+  time?: string;
+  paymentMethod?: string;
+  paymentVoucher?: string;
 }
 
 export const SHOPS = ['淮海路店', '上海店', '武汉店', '北京店', '广州店'];
 export const CARD_TYPES = ['非会员', '白金卡', '黄金卡', '铂金卡', '黑钻卡'];
 export const ROOM_TYPES = ['至尊', '大包', '中包', '小包'];
+export const PAYMENT_METHODS = ['现金', '余额', '赠送余额', '团购'];
+
+// Card type thresholds based on total recharge amount
+export const CARD_TYPE_THRESHOLDS = [
+  { type: '黑钻卡', minAmount: 50000 },
+  { type: '铂金卡', minAmount: 20000 },
+  { type: '黄金卡', minAmount: 10000 },
+  { type: '白金卡', minAmount: 5000 },
+  { type: '非会员', minAmount: 0 },
+];
+
+export function calculateCardType(totalRecharge: number): string {
+  for (const threshold of CARD_TYPE_THRESHOLDS) {
+    if (totalRecharge >= threshold.minAmount) {
+      return threshold.type;
+    }
+  }
+  return '非会员';
+}

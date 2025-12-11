@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { format, addDays } from 'date-fns';
 import { useDataStore } from '@/contexts/DataStore';
-import { RoomBooking as RoomBookingType, SHOPS } from '@/types';
+import { RoomBooking as RoomBookingType, SHOPS, PAYMENT_METHODS } from '@/types';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -11,14 +11,15 @@ import {
 } from '@/components/ui/dialog';
 import SalesSelect from '@/components/SalesSelect';
 import { cn } from '@/lib/utils';
+import { Upload } from 'lucide-react';
 
 export default function RoomBooking() {
-  const { rooms, roomBookings, setRoomBookings, members, salespersons } =
+  const { rooms, roomBookings, setRoomBookings, members, salespersons, setConsumeRecords, consumeRecords } =
     useDataStore();
   const [selectedBooking, setSelectedBooking] =
     useState<RoomBookingType | null>(null);
   const [modalMode, setModalMode] = useState<
-    'book' | 'booked' | 'finished' | null
+    'book' | 'booked' | 'finished' | 'payment' | null
   >(null);
   const [selectedShop, setSelectedShop] = useState<string>(SHOPS[0]);
 
@@ -28,6 +29,15 @@ export default function RoomBooking() {
     customerId: '',
     salesId: '',
     salesName: '',
+  });
+
+  // Payment form state
+  const [paymentForm, setPaymentForm] = useState({
+    serviceSalesId: '',
+    serviceSalesName: '',
+    paymentMethod: PAYMENT_METHODS[0],
+    paymentVoucher: '',
+    time: format(new Date(), 'HH:mm'),
   });
 
   const today = new Date();
@@ -55,7 +65,6 @@ export default function RoomBooking() {
     if (!room) return;
 
     if (!booking || booking.status === 'available') {
-      // Create new booking entry if doesn't exist
       const newBooking: RoomBookingType = booking || {
         id: `B-${roomNumber}-${date}`,
         roomNumber,
@@ -76,6 +85,13 @@ export default function RoomBooking() {
     } else if (booking.status === 'booked') {
       setSelectedBooking(booking);
       setModalMode('booked');
+      setPaymentForm({
+        serviceSalesId: '',
+        serviceSalesName: '',
+        paymentMethod: PAYMENT_METHODS[0],
+        paymentVoucher: '',
+        time: format(new Date(), 'HH:mm'),
+      });
     } else if (booking.status === 'finished') {
       setSelectedBooking(booking);
       setModalMode('finished');
@@ -106,14 +122,60 @@ export default function RoomBooking() {
     setModalMode(null);
   };
 
+  const handleOpenPayment = () => {
+    setModalMode('payment');
+  };
+
   const handleFinish = () => {
     if (!selectedBooking) return;
 
+    const updatedBooking: RoomBookingType = {
+      ...selectedBooking,
+      status: 'finished' as const,
+      serviceSalesId: paymentForm.serviceSalesId,
+      serviceSalesName: paymentForm.serviceSalesName,
+      paymentMethod: paymentForm.paymentMethod,
+      paymentVoucher: paymentForm.paymentVoucher,
+      time: paymentForm.time,
+    };
+
     setRoomBookings((prev) =>
       prev.map((b) =>
-        b.id === selectedBooking.id ? { ...b, status: 'finished' as const } : b
+        b.id === selectedBooking.id ? updatedBooking : b
       )
     );
+
+    // Find member info
+    const member = members.find(m => m.memberId === selectedBooking.customerId);
+
+    // Add consume record
+    const newConsumeRecord = {
+      id: `X${Date.now()}`,
+      date: selectedBooking.date,
+      time: paymentForm.time,
+      memberId: selectedBooking.customerId || '',
+      memberName: selectedBooking.customerName || '',
+      cardType: member?.cardType || '非会员',
+      phone: member?.phone || '',
+      idNumber: member?.idNumber || '',
+      amount: -selectedBooking.price,
+      balance: member?.remainingRecharge || 0,
+      giftBalance: member?.remainingGift || 0,
+      salesId: selectedBooking.salesId || '',
+      salesName: selectedBooking.salesName || '',
+      serviceSalesId: paymentForm.serviceSalesId,
+      serviceSalesName: paymentForm.serviceSalesName,
+      shop: selectedBooking.shop,
+      consumeType: '订房',
+      content: `${selectedBooking.roomType}包厢消费`,
+      remark: '',
+      roomNumber: selectedBooking.roomNumber,
+      bookingDate: selectedBooking.date,
+      paymentMethod: paymentForm.paymentMethod,
+      paymentVoucher: paymentForm.paymentVoucher,
+    };
+
+    setConsumeRecords((prev) => [...prev, newConsumeRecord]);
 
     setSelectedBooking(null);
     setModalMode(null);
@@ -130,6 +192,20 @@ export default function RoomBooking() {
 
     setSelectedBooking(null);
     setModalMode(null);
+  };
+
+  const handleVoucherUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPaymentForm((prev) => ({
+          ...prev,
+          paymentVoucher: reader.result as string,
+        }));
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -397,7 +473,128 @@ export default function RoomBooking() {
                 <Button variant="destructive" onClick={handleCancel}>
                   取消预定
                 </Button>
-                <Button onClick={handleFinish}>已到店支付</Button>
+                <Button onClick={handleOpenPayment}>已到店支付</Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Payment Modal */}
+      <Dialog
+        open={modalMode === 'payment'}
+        onOpenChange={() => {
+          setModalMode('booked');
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>到店支付</DialogTitle>
+          </DialogHeader>
+          {selectedBooking && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4 text-sm bg-muted/30 p-4 rounded-md">
+                <div>
+                  <span className="text-muted-foreground">房号：</span>
+                  <span className="font-medium">{selectedBooking.roomNumber}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">价格：</span>
+                  <span className="font-medium text-green-600">¥{selectedBooking.price}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">客户：</span>
+                  <span>{selectedBooking.customerName}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">日期：</span>
+                  <span>{selectedBooking.date}</span>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    服务业务员
+                  </label>
+                  <SalesSelect
+                    value={paymentForm.serviceSalesId}
+                    onChange={(salesId, salesName) =>
+                      setPaymentForm((prev) => ({ ...prev, serviceSalesId: salesId, serviceSalesName: salesName }))
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    到店时间
+                  </label>
+                  <input
+                    type="time"
+                    value={paymentForm.time}
+                    onChange={(e) =>
+                      setPaymentForm((prev) => ({
+                        ...prev,
+                        time: e.target.value,
+                      }))
+                    }
+                    className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    支付方式
+                  </label>
+                  <select
+                    value={paymentForm.paymentMethod}
+                    onChange={(e) =>
+                      setPaymentForm((prev) => ({
+                        ...prev,
+                        paymentMethod: e.target.value,
+                      }))
+                    }
+                    className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                  >
+                    {PAYMENT_METHODS.map((method) => (
+                      <option key={method} value={method}>
+                        {method}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    支付凭证
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <label className="flex items-center gap-2 px-4 py-2 text-sm border border-border rounded-md bg-background cursor-pointer hover:bg-muted transition-colors">
+                      <Upload className="h-4 w-4" />
+                      上传凭证
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleVoucherUpload}
+                        className="hidden"
+                      />
+                    </label>
+                    {paymentForm.paymentVoucher && (
+                      <span className="text-sm text-green-600">已上传</span>
+                    )}
+                  </div>
+                  {paymentForm.paymentVoucher && (
+                    <img
+                      src={paymentForm.paymentVoucher}
+                      alt="凭证预览"
+                      className="mt-2 max-h-32 rounded-md border border-border"
+                    />
+                  )}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <Button variant="outline" onClick={() => setModalMode('booked')}>
+                  返回
+                </Button>
+                <Button onClick={handleFinish}>确认支付</Button>
               </div>
             </div>
           )}
@@ -436,6 +633,10 @@ export default function RoomBooking() {
                   <span>{selectedBooking.date}</span>
                 </div>
                 <div>
+                  <span className="text-muted-foreground">到店时间：</span>
+                  <span>{selectedBooking.time || '-'}</span>
+                </div>
+                <div>
                   <span className="text-muted-foreground">客户姓名：</span>
                   <span>{selectedBooking.customerName}</span>
                 </div>
@@ -449,7 +650,28 @@ export default function RoomBooking() {
                     {selectedBooking.salesName} {selectedBooking.salesId}
                   </span>
                 </div>
+                <div>
+                  <span className="text-muted-foreground">服务业务员：</span>
+                  <span>
+                    {selectedBooking.serviceSalesName || '-'} {selectedBooking.serviceSalesId || ''}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">支付方式：</span>
+                  <span>{selectedBooking.paymentMethod || '-'}</span>
+                </div>
               </div>
+
+              {selectedBooking.paymentVoucher && (
+                <div>
+                  <span className="text-sm text-muted-foreground">支付凭证：</span>
+                  <img
+                    src={selectedBooking.paymentVoucher}
+                    alt="支付凭证"
+                    className="mt-2 max-h-48 rounded-md border border-border"
+                  />
+                </div>
+              )}
 
               <div className="flex justify-end">
                 <Button
