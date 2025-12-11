@@ -102,7 +102,7 @@ export interface RoomBooking {
   earlyTerminationReason?: string;
 }
 
-export const SHOPS = ['淮海路店', '上海店', '武汉店', '北京店', '广州店'];
+export const SHOPS = ['上海店', '武汉店'];
 export const CARD_TYPES = ['非会员', '白金卡', '黄金卡', '铂金卡', '黑钻卡'];
 export const ROOM_TYPES = ['至尊', '大包', '中包', '小包'];
 export const PAYMENT_METHODS = ['现金', '余额', '赠送余额', '团购'];

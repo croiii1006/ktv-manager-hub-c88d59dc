@@ -14,17 +14,25 @@ import { cn } from '@/lib/utils';
 import { Upload } from 'lucide-react';
 
 export default function RoomBooking() {
-  const { rooms, roomBookings, setRoomBookings, members, salespersons, setConsumeRecords, consumeRecords } =
-    useDataStore();
+  const {
+    rooms,
+    roomBookings,
+    setRoomBookings,
+    members,
+    salespersons,
+    setConsumeRecords,
+    consumeRecords,
+  } = useDataStore();
+
   const [selectedBooking, setSelectedBooking] =
     useState<RoomBookingType | null>(null);
   const [modalMode, setModalMode] = useState<
-    'book' | 'booked' | 'finished' | 'payment' | 'early_terminate' | 'early_terminated_detail' | null
+    'book' | 'booked' | 'finished' | 'payment' | null
   >(null);
   const [earlyTerminationReason, setEarlyTerminationReason] = useState('');
   const [selectedShop, setSelectedShop] = useState<string>(SHOPS[0]);
 
-  // Booking form state
+  // 预定表单
   const [bookingForm, setBookingForm] = useState({
     customerName: '',
     customerId: '',
@@ -32,7 +40,28 @@ export default function RoomBooking() {
     salesName: '',
   });
 
-  // Payment form state
+  // 客户搜索（姓名/手机号/编号）
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+
+  const matchedMembers = useMemo(() => {
+    const kw = customerSearch.trim();
+    if (!kw) return [];
+    return members
+      .filter((m) => {
+        const name = m.name || '';
+        const phone = m.phone || '';
+        const id = m.memberId || '';
+        return (
+          name.includes(kw) ||
+          phone.includes(kw) ||
+          id.includes(kw)
+        );
+      })
+      .slice(0, 10);
+  }, [members, customerSearch]);
+
+  // 支付表单
   const [paymentForm, setPaymentForm] = useState({
     serviceSalesId: '',
     serviceSalesName: '',
@@ -46,23 +75,22 @@ export default function RoomBooking() {
     format(addDays(today, i), 'yyyy-MM-dd')
   );
 
-  const filteredRooms = useMemo(() => {
-    return rooms.filter((room) => room.shop === selectedShop);
-  }, [rooms, selectedShop]);
+  const filteredRooms = useMemo(
+    () => rooms.filter((room) => room.shop === selectedShop),
+    [rooms, selectedShop]
+  );
 
   const getBooking = (
     roomNumber: string,
     date: string
-  ): RoomBookingType | undefined => {
-    return roomBookings.find(
+  ): RoomBookingType | undefined =>
+    roomBookings.find(
       (b) => b.roomNumber === roomNumber && b.date === date
     );
-  };
 
   const handleCellClick = (roomNumber: string, date: string) => {
     const booking = getBooking(roomNumber, date);
     const room = rooms.find((r) => r.roomNumber === roomNumber);
-
     if (!room) return;
 
     if (!booking || booking.status === 'available') {
@@ -83,6 +111,8 @@ export default function RoomBooking() {
         salesId: '',
         salesName: '',
       });
+      setCustomerSearch('');
+      setShowCustomerDropdown(false);
     } else if (booking.status === 'booked') {
       setSelectedBooking(booking);
       setModalMode('booked');
@@ -96,9 +126,7 @@ export default function RoomBooking() {
     } else if (booking.status === 'finished') {
       setSelectedBooking(booking);
       setModalMode('finished');
-    } else if (booking.status === 'early_terminated') {
-      setSelectedBooking(booking);
-      setModalMode('early_terminated_detail');
+      setEarlyTerminationReason('');
     }
   };
 
@@ -126,9 +154,7 @@ export default function RoomBooking() {
     setModalMode(null);
   };
 
-  const handleOpenPayment = () => {
-    setModalMode('payment');
-  };
+  const handleOpenPayment = () => setModalMode('payment');
 
   const handleFinish = () => {
     if (!selectedBooking) return;
@@ -149,10 +175,10 @@ export default function RoomBooking() {
       )
     );
 
-    // Find member info
-    const member = members.find(m => m.memberId === selectedBooking.customerId);
+    const member = members.find(
+      (m) => m.memberId === selectedBooking.customerId
+    );
 
-    // Add consume record
     const newConsumeRecord = {
       id: `X${Date.now()}`,
       date: selectedBooking.date,
@@ -190,7 +216,16 @@ export default function RoomBooking() {
 
     setRoomBookings((prev) =>
       prev.map((b) =>
-        b.id === selectedBooking.id ? { ...b, status: 'available' as const, customerName: undefined, customerId: undefined, salesId: undefined, salesName: undefined } : b
+        b.id === selectedBooking.id
+          ? {
+              ...b,
+              status: 'available' as const,
+              customerName: undefined,
+              customerId: undefined,
+              salesId: undefined,
+              salesName: undefined,
+            }
+          : b
       )
     );
 
@@ -200,16 +235,15 @@ export default function RoomBooking() {
 
   const handleVoucherUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPaymentForm((prev) => ({
-          ...prev,
-          paymentVoucher: reader.result as string,
-        }));
-      };
-      reader.readAsDataURL(file);
-    }
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setPaymentForm((prev) => ({
+        ...prev,
+        paymentVoucher: reader.result as string,
+      }));
+    };
+    reader.readAsDataURL(file);
   };
 
   const getStatusColor = (status: string) => {
@@ -218,8 +252,6 @@ export default function RoomBooking() {
         return 'bg-green-500 hover:bg-green-600 text-primary-foreground';
       case 'finished':
         return 'bg-red-500 hover:bg-red-600 text-primary-foreground';
-      case 'early_terminated':
-        return 'bg-amber-500 hover:bg-amber-600 text-primary-foreground';
       default:
         return 'bg-muted hover:bg-muted/80 text-muted-foreground';
     }
@@ -231,21 +263,34 @@ export default function RoomBooking() {
         return '已预定';
       case 'finished':
         return '已完成';
-      case 'early_terminated':
-        return '提前结束';
       default:
         return '可订';
     }
   };
 
+  // “提前结束”=> 直接恢复可订，保留理由
   const handleEarlyTerminate = () => {
-    if (!selectedBooking || !earlyTerminationReason.trim()) return;
+    if (!selectedBooking) return;
+    if (!earlyTerminationReason.trim()) return;
+
+    const updatedBooking: RoomBookingType = {
+      ...selectedBooking,
+      status: 'available' as const,
+      customerName: undefined,
+      customerId: undefined,
+      salesId: undefined,
+      salesName: undefined,
+      serviceSalesId: undefined,
+      serviceSalesName: undefined,
+      paymentMethod: undefined,
+      paymentVoucher: undefined,
+      time: undefined,
+      earlyTerminationReason: earlyTerminationReason.trim(),
+    };
 
     setRoomBookings((prev) =>
       prev.map((b) =>
-        b.id === selectedBooking.id
-          ? { ...b, status: 'early_terminated' as const, earlyTerminationReason }
-          : b
+        b.id === updatedBooking.id ? updatedBooking : b
       )
     );
 
@@ -338,20 +383,16 @@ export default function RoomBooking() {
       {/* Legend */}
       <div className="flex gap-6 text-sm flex-wrap">
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded bg-muted"></div>
+          <div className="w-4 h-4 rounded bg-muted" />
           <span className="text-muted-foreground">可预订</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded bg-green-500"></div>
+          <div className="w-4 h-4 rounded bg-green-500" />
           <span className="text-muted-foreground">已预定</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded bg-red-500"></div>
+          <div className="w-4 h-4 rounded bg-red-500" />
           <span className="text-muted-foreground">已完成</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded bg-amber-500"></div>
-          <span className="text-muted-foreground">提前结束</span>
         </div>
       </div>
 
@@ -361,6 +402,8 @@ export default function RoomBooking() {
         onOpenChange={() => {
           setModalMode(null);
           setSelectedBooking(null);
+          setCustomerSearch('');
+          setShowCustomerDropdown(false);
         }}
       >
         <DialogContent>
@@ -392,26 +435,71 @@ export default function RoomBooking() {
                     ¥{selectedBooking.price}
                   </span>
                 </div>
+                {selectedBooking.earlyTerminationReason && (
+                  <div className="col-span-2 text-xs text-amber-700 dark:text-amber-300 mt-2">
+                    <span className="font-medium">上次提前结束理由：</span>
+                    <span>{selectedBooking.earlyTerminationReason}</span>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-3">
-                <div>
+                {/* 客户搜索 + 自动匹配编号 */}
+                <div className="relative">
                   <label className="block text-sm font-medium mb-1">
-                    客户姓名
+                    客户（输入姓名/手机号/编号搜索）
                   </label>
                   <input
                     type="text"
-                    value={bookingForm.customerName}
-                    onChange={(e) =>
+                    value={customerSearch}
+                    onChange={(e) => {
+                      setCustomerSearch(e.target.value);
+                      setShowCustomerDropdown(true);
+                      // 清空当前选择，避免误用旧值
                       setBookingForm((prev) => ({
                         ...prev,
-                        customerName: e.target.value,
-                      }))
-                    }
+                        customerName: '',
+                        customerId: '',
+                      }));
+                    }}
+                    onFocus={() => {
+                      if (customerSearch.trim()) setShowCustomerDropdown(true);
+                    }}
                     className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-                    placeholder="输入客户姓名"
+                    placeholder="输入关键字搜索已登记客户"
                   />
+                  {showCustomerDropdown && matchedMembers.length > 0 && (
+                    <div className="absolute z-20 mt-1 w-full max-h-48 overflow-auto rounded-md border border-border bg-popover shadow-lg text-sm">
+                      {matchedMembers.map((m) => (
+                        <button
+                          key={m.memberId}
+                          type="button"
+                          className="w-full text-left px-3 py-1.5 hover:bg-muted transition-colors"
+                          onClick={() => {
+                            setBookingForm((prev) => ({
+                              ...prev,
+                              customerName: m.name,
+                              customerId: m.memberId,
+                            }));
+                            setCustomerSearch(
+                              `${m.name}${m.phone ? ' / ' + m.phone : ''} / ${
+                                m.memberId
+                              }`
+                            );
+                            setShowCustomerDropdown(false);
+                          }}
+                        >
+                          <div className="font-medium">{m.name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            编号：{m.memberId}
+                            {m.phone && ` · 手机：${m.phone}`}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
+
                 <div>
                   <label className="block text-sm font-medium mb-1">
                     客户编号
@@ -419,16 +507,12 @@ export default function RoomBooking() {
                   <input
                     type="text"
                     value={bookingForm.customerId}
-                    onChange={(e) =>
-                      setBookingForm((prev) => ({
-                        ...prev,
-                        customerId: e.target.value,
-                      }))
-                    }
-                    className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-                    placeholder="输入客户编号"
+                    readOnly
+                    className="w-full px-3 py-2 text-sm border border-border rounded-md bg-muted/40 text-muted-foreground cursor-not-allowed"
+                    placeholder="选择客户后自动填入"
                   />
                 </div>
+
                 <div>
                   <label className="block text-sm font-medium mb-1">
                     业务员
@@ -528,7 +612,9 @@ export default function RoomBooking() {
                 </div>
                 <div>
                   <span className="text-muted-foreground">价格：</span>
-                  <span className="font-medium text-green-600">¥{selectedBooking.price}</span>
+                  <span className="font-medium text-green-600">
+                    ¥{selectedBooking.price}
+                  </span>
                 </div>
                 <div>
                   <span className="text-muted-foreground">客户：</span>
@@ -548,7 +634,11 @@ export default function RoomBooking() {
                   <SalesSelect
                     value={paymentForm.serviceSalesId}
                     onChange={(salesId, salesName) =>
-                      setPaymentForm((prev) => ({ ...prev, serviceSalesId: salesId, serviceSalesName: salesName }))
+                      setPaymentForm((prev) => ({
+                        ...prev,
+                        serviceSalesId: salesId,
+                        serviceSalesName: salesName,
+                      }))
                     }
                   />
                 </div>
@@ -635,6 +725,7 @@ export default function RoomBooking() {
         onOpenChange={() => {
           setModalMode(null);
           setSelectedBooking(null);
+          setEarlyTerminationReason('');
         }}
       >
         <DialogContent>
@@ -681,7 +772,8 @@ export default function RoomBooking() {
                 <div>
                   <span className="text-muted-foreground">服务业务员：</span>
                   <span>
-                    {selectedBooking.serviceSalesName || '-'} {selectedBooking.serviceSalesId || ''}
+                    {selectedBooking.serviceSalesName || '-'}{' '}
+                    {selectedBooking.serviceSalesId || ''}
                   </span>
                 </div>
                 <div>
@@ -701,172 +793,36 @@ export default function RoomBooking() {
                 </div>
               )}
 
+              {/* 提前结束理由输入区域 */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium">
+                  提前结束理由 <span className="text-destructive">*</span>
+                </label>
+                <textarea
+                  value={earlyTerminationReason}
+                  onChange={(e) => setEarlyTerminationReason(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring min-h-[80px]"
+                  placeholder="请输入提前结束的理由，确认后该房间将恢复为可订状态"
+                />
+              </div>
+
               <div className="flex justify-end gap-3">
                 <Button
                   variant="outline"
                   onClick={() => {
                     setModalMode(null);
                     setSelectedBooking(null);
+                    setEarlyTerminationReason('');
                   }}
                 >
                   关闭
                 </Button>
                 <Button
                   variant="destructive"
-                  onClick={() => {
-                    setEarlyTerminationReason('');
-                    setModalMode('early_terminate');
-                  }}
-                >
-                  提前结束
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Early Terminate Modal */}
-      <Dialog
-        open={modalMode === 'early_terminate'}
-        onOpenChange={() => {
-          setModalMode('finished');
-          setEarlyTerminationReason('');
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>提前结束</DialogTitle>
-          </DialogHeader>
-          {selectedBooking && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-sm bg-muted/30 p-4 rounded-md">
-                <div>
-                  <span className="text-muted-foreground">房号：</span>
-                  <span className="font-medium">{selectedBooking.roomNumber}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">客户：</span>
-                  <span>{selectedBooking.customerName}</span>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  提前结束理由 <span className="text-destructive">*</span>
-                </label>
-                <textarea
-                  value={earlyTerminationReason}
-                  onChange={(e) => setEarlyTerminationReason(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring min-h-[100px]"
-                  placeholder="请输入提前结束的理由"
-                />
-              </div>
-
-              <div className="flex justify-end gap-3">
-                <Button variant="outline" onClick={() => setModalMode('finished')}>
-                  取消
-                </Button>
-                <Button
                   onClick={handleEarlyTerminate}
                   disabled={!earlyTerminationReason.trim()}
                 >
-                  确认提前结束
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Early Terminated Detail Modal */}
-      <Dialog
-        open={modalMode === 'early_terminated_detail'}
-        onOpenChange={() => {
-          setModalMode(null);
-          setSelectedBooking(null);
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>提前结束详情</DialogTitle>
-          </DialogHeader>
-          {selectedBooking && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-muted-foreground">房号：</span>
-                  <span className="font-medium">{selectedBooking.roomNumber}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">房型：</span>
-                  <span>{selectedBooking.roomType}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">门店：</span>
-                  <span>{selectedBooking.shop}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">日期：</span>
-                  <span>{selectedBooking.date}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">到店时间：</span>
-                  <span>{selectedBooking.time || '-'}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">客户姓名：</span>
-                  <span>{selectedBooking.customerName}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">客户编号：</span>
-                  <span className="font-mono">{selectedBooking.customerId}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">业务员：</span>
-                  <span>
-                    {selectedBooking.salesName} {selectedBooking.salesId}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">服务业务员：</span>
-                  <span>
-                    {selectedBooking.serviceSalesName || '-'} {selectedBooking.serviceSalesId || ''}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">支付方式：</span>
-                  <span>{selectedBooking.paymentMethod || '-'}</span>
-                </div>
-              </div>
-
-              {selectedBooking.paymentVoucher && (
-                <div>
-                  <span className="text-sm text-muted-foreground">支付凭证：</span>
-                  <img
-                    src={selectedBooking.paymentVoucher}
-                    alt="支付凭证"
-                    className="mt-2 max-h-48 rounded-md border border-border"
-                  />
-                </div>
-              )}
-
-              <div className="p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-md">
-                <span className="text-sm font-medium text-amber-800 dark:text-amber-200">提前结束理由：</span>
-                <p className="mt-1 text-sm text-amber-700 dark:text-amber-300">
-                  {selectedBooking.earlyTerminationReason}
-                </p>
-              </div>
-
-              <div className="flex justify-end">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setModalMode(null);
-                    setSelectedBooking(null);
-                  }}
-                >
-                  关闭
+                  提前结束并恢复可订
                 </Button>
               </div>
             </div>

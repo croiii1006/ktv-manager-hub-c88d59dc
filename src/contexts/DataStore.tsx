@@ -36,13 +36,13 @@ const DataStoreContext = createContext<DataStoreContextType | undefined>(undefin
 
 // Generate initial mock data
 const initialTeamLeaders: TeamLeader[] = [
-  { leaderId: 'C0000001', name: '张队长', phone: '13800001111', shop: '淮海路店', wechat: 'zhang_leader' },
+  { leaderId: 'C0000001', name: '张队长', phone: '13800001111', shop: '上海店', wechat: 'zhang_leader' },
   { leaderId: 'C0000002', name: '李队长', phone: '13800002222', shop: '上海店', wechat: 'li_leader' },
   { leaderId: 'C0000003', name: '王队长', phone: '13800003333', shop: '武汉店', wechat: 'wang_leader' },
 ];
 
 const initialSalespersons: Salesperson[] = [
-  { salesId: 'Y0000001', name: '张三', phone: '13900001111', wechat: 'zhangsan', shop: '淮海路店', leaderId: 'C0000001', leaderName: '张队长' },
+  { salesId: 'Y0000001', name: '张三', phone: '13900001111', wechat: 'zhangsan', shop: '上海店', leaderId: 'C0000001', leaderName: '张队长' },
   { salesId: 'Y0000002', name: '李四', phone: '13900002222', wechat: 'lisi', shop: '上海店', leaderId: 'C0000002', leaderName: '李队长' },
   { salesId: 'Y0000003', name: '王五', phone: '13900003333', wechat: 'wangwu', shop: '武汉店', leaderId: 'C0000003', leaderName: '王队长' },
 ];
@@ -56,25 +56,25 @@ const initialMembers: Member[] = [
 ];
 
 const initialRechargeRecords: RechargeRecord[] = [
-  { id: 'R001', date: '2024-12-01', memberId: 'A0000001', memberName: '陈小明', cardType: '白金卡', phone: '13700001111', idNumber: '310101199001011234', amount: 5000, giftAmount: 1000, salesId: 'Y0000001', salesName: '张三', shop: '淮海路店', remark: '首次充值', balance: 5000, giftBalance: 1000 },
-  { id: 'R002', date: '2024-12-02', memberId: 'A0000002', memberName: '刘芳芳', cardType: '黄金卡', phone: '13700002222', idNumber: '310101199202022345', amount: 3000, giftAmount: 500, salesId: 'Y0000001', salesName: '张三', shop: '淮海路店', remark: '', balance: 3000, giftBalance: 500 },
+  { id: 'R001', date: '2024-12-01', memberId: 'A0000001', memberName: '陈小明', cardType: '白金卡', phone: '13700001111', idNumber: '310101199001011234', amount: 5000, giftAmount: 1000, salesId: 'Y0000001', salesName: '张三', shop: '上海店', remark: '首次充值', balance: 5000, giftBalance: 1000 },
+  { id: 'R002', date: '2024-12-02', memberId: 'A0000002', memberName: '刘芳芳', cardType: '黄金卡', phone: '13700002222', idNumber: '310101199202022345', amount: 3000, giftAmount: 500, salesId: 'Y0000001', salesName: '张三', shop: '上海店', remark: '', balance: 3000, giftBalance: 500 },
   { id: 'R003', date: '2024-12-03', memberId: 'A0000003', memberName: '赵大力', cardType: '铂金卡', phone: '13700003333', idNumber: '310101199303033456', amount: 8000, giftAmount: 2000, salesId: 'Y0000002', salesName: '李四', shop: '上海店', remark: '升级铂金卡', balance: 8000, giftBalance: 2000 },
   { id: 'R004', date: '2024-12-04', memberId: 'A0000004', memberName: '孙丽丽', cardType: '黑钻卡', phone: '13700004444', idNumber: '310101199404044567', amount: 15000, giftAmount: 5000, salesId: 'Y0000002', salesName: '李四', shop: '上海店', remark: 'VIP客户', balance: 15000, giftBalance: 5000 },
 ];
 
 const initialConsumeRecords: ConsumeRecord[] = [
-  { id: 'X001', date: '2024-12-02', time: '14:30', memberId: 'A0000001', memberName: '陈小明', cardType: '白金卡', phone: '13700001111', idNumber: '310101199001011234', amount: -500, balance: 4500, giftBalance: 1000, salesId: 'Y0000001', salesName: '张三', serviceSalesId: 'Y0000002', serviceSalesName: '李四', shop: '淮海路店', consumeType: '订房', content: '大包厢消费', remark: '', roomNumber: '888', bookingDate: '2024-12-02', paymentMethod: '余额', paymentVoucher: '' },
-  { id: 'X002', date: '2024-12-03', time: '19:00', memberId: 'A0000002', memberName: '刘芳芳', cardType: '黄金卡', phone: '13700002222', idNumber: '310101199202022345', amount: -300, balance: 2700, giftBalance: 500, salesId: 'Y0000001', salesName: '张三', serviceSalesId: 'Y0000001', serviceSalesName: '张三', shop: '淮海路店', consumeType: '订房', content: '中包厢消费', remark: '生日派对', roomNumber: '666', bookingDate: '2024-12-03', paymentMethod: '现金', paymentVoucher: '' },
+  { id: 'X001', date: '2024-12-02', time: '14:30', memberId: 'A0000001', memberName: '陈小明', cardType: '白金卡', phone: '13700001111', idNumber: '310101199001011234', amount: -500, balance: 4500, giftBalance: 1000, salesId: 'Y0000001', salesName: '张三', serviceSalesId: 'Y0000002', serviceSalesName: '李四', shop: '上海店', consumeType: '订房', content: '大包厢消费', remark: '', roomNumber: '888', bookingDate: '2024-12-02', paymentMethod: '余额', paymentVoucher: '' },
+  { id: 'X002', date: '2024-12-03', time: '19:00', memberId: 'A0000002', memberName: '刘芳芳', cardType: '黄金卡', phone: '13700002222', idNumber: '310101199202022345', amount: -300, balance: 2700, giftBalance: 500, salesId: 'Y0000001', salesName: '张三', serviceSalesId: 'Y0000001', serviceSalesName: '张三', shop: '上海店', consumeType: '订房', content: '中包厢消费', remark: '生日派对', roomNumber: '666', bookingDate: '2024-12-03', paymentMethod: '现金', paymentVoucher: '' },
   { id: 'X003', date: '2024-12-04', time: '20:15', memberId: 'A0000003', memberName: '赵大力', cardType: '铂金卡', phone: '13700003333', idNumber: '310101199303033456', amount: -1000, balance: 7000, giftBalance: 2000, salesId: 'Y0000002', salesName: '李四', serviceSalesId: 'Y0000003', serviceSalesName: '王五', shop: '上海店', consumeType: '订房', content: '至尊包厢消费', remark: '商务接待', roomNumber: '999', bookingDate: '2024-12-04', paymentMethod: '团购', paymentVoucher: '' },
 ];
 
 const initialRooms: Room[] = [
-  { roomNumber: '999', roomType: '至尊', shop: '淮海路店', price: 2888 },
-  { roomNumber: '888', roomType: '大包', shop: '淮海路店', price: 1888 },
-  { roomNumber: '777', roomType: '大包', shop: '淮海路店', price: 1888 },
-  { roomNumber: '666', roomType: '中包', shop: '淮海路店', price: 1288 },
-  { roomNumber: '555', roomType: '中包', shop: '淮海路店', price: 1288 },
-  { roomNumber: '444', roomType: '小包', shop: '淮海路店', price: 888 },
+  { roomNumber: '999', roomType: '至尊', shop: '上海店', price: 2888 },
+  { roomNumber: '888', roomType: '大包', shop: '上海店', price: 1888 },
+  { roomNumber: '777', roomType: '大包', shop: '上海店', price: 1888 },
+  { roomNumber: '666', roomType: '中包', shop: '上海店', price: 1288 },
+  { roomNumber: '555', roomType: '中包', shop: '上海店', price: 1288 },
+  { roomNumber: '444', roomType: '小包', shop: '上海店', price: 888 },
   { roomNumber: '998', roomType: '至尊', shop: '上海店', price: 2888 },
   { roomNumber: '887', roomType: '大包', shop: '上海店', price: 1888 },
   { roomNumber: '776', roomType: '中包', shop: '上海店', price: 1288 },
