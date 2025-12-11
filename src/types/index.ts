@@ -88,7 +88,7 @@ export interface RoomBooking {
   roomType: string;
   shop: string;
   date: string;
-  status: 'available' | 'booked' | 'finished';
+  status: 'available' | 'booked' | 'finished' | 'early_terminated';
   customerName?: string;
   customerId?: string;
   salesId?: string;
@@ -99,6 +99,7 @@ export interface RoomBooking {
   time?: string;
   paymentMethod?: string;
   paymentVoucher?: string;
+  earlyTerminationReason?: string;
 }
 
 export const SHOPS = ['淮海路店', '上海店', '武汉店', '北京店', '广州店'];
