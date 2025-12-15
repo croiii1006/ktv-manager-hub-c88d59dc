@@ -1,17 +1,24 @@
 import { useState, useMemo } from 'react';
 import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
-import { useDataStore } from '@/contexts/DataStore';
-import { RechargeRecord } from '@/types';
+import { useQuery } from '@tanstack/react-query';
+import { RechargesApi } from '@/services/admin';
+import { RechargeResp } from '@/models';
 
 type SortDirection = 'asc' | 'desc' | null;
-type SortKey = keyof RechargeRecord | null;
+type SortKey = keyof RechargeResp | null;
 
 export default function RechargeRecords() {
-  const { rechargeRecords } = useDataStore();
   const [sortKey, setSortKey] = useState<SortKey>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
 
-  const handleSort = (key: keyof RechargeRecord) => {
+  const { data: rechargeResp } = useQuery({
+    queryKey: ['recharges'],
+    queryFn: () => RechargesApi.list({ page: 1, size: 100 }),
+  });
+
+  const rechargeRecords = rechargeResp?.data?.list || [];
+
+  const handleSort = (key: keyof RechargeResp) => {
     if (sortKey === key) {
       if (sortDirection === 'asc') {
         setSortDirection('desc');
@@ -38,8 +45,8 @@ export default function RechargeRecords() {
         return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
       }
 
-      const aStr = String(aVal).toLowerCase();
-      const bStr = String(bVal).toLowerCase();
+      const aStr = String(aVal || '').toLowerCase();
+      const bStr = String(bVal || '').toLowerCase();
 
       if (sortDirection === 'asc') {
         return aStr.localeCompare(bStr);
@@ -48,7 +55,7 @@ export default function RechargeRecords() {
     });
   }, [rechargeRecords, sortKey, sortDirection]);
 
-  const SortIcon = ({ columnKey }: { columnKey: keyof RechargeRecord }) => {
+  const SortIcon = ({ columnKey }: { columnKey: keyof RechargeResp }) => {
     if (sortKey !== columnKey) {
       return <ChevronsUpDown className="h-3 w-3 text-muted-foreground/50" />;
     }
@@ -58,17 +65,17 @@ export default function RechargeRecords() {
     return <ChevronDown className="h-3 w-3 text-foreground" />;
   };
 
-  const columns: { key: keyof RechargeRecord; label: string }[] = [
-    { key: 'date', label: '日期' },
+  const columns: { key: keyof RechargeResp; label: string }[] = [
+    { key: 'createdAt', label: '日期' },
     { key: 'memberId', label: '会员卡号' },
-    { key: 'cardType', label: '卡类型' },
+    { key: 'cardTypeName', label: '卡类型' },
     { key: 'memberName', label: '姓名' },
     { key: 'phone', label: '手机号码' },
-    { key: 'idNumber', label: '身份证号' },
+    { key: 'idCard', label: '身份证号' },
     { key: 'amount', label: '充值金额' },
     { key: 'giftAmount', label: '赠送金额' },
-    { key: 'salesName', label: '业务员' },
-    { key: 'shop', label: '店铺' },
+    { key: 'applyStaffName', label: '业务员' },
+    { key: 'storeName', label: '店铺' },
     { key: 'remark', label: '备注' },
   ];
 
@@ -109,13 +116,13 @@ export default function RechargeRecords() {
                   className="border-b border-border hover:bg-muted/30 transition-colors"
                 >
                   <td className="px-3 py-3 text-sm whitespace-nowrap">
-                    {record.date}
+                    {record.createdAt?.split('T')[0]}
                   </td>
                   <td className="px-3 py-3 text-sm font-mono whitespace-nowrap">
                     {record.memberId}
                   </td>
                   <td className="px-3 py-3 text-sm whitespace-nowrap">
-                    {record.cardType}
+                    {record.cardTypeName}
                   </td>
                   <td className="px-3 py-3 text-sm whitespace-nowrap">
                     {record.memberName}
@@ -124,19 +131,19 @@ export default function RechargeRecords() {
                     {record.phone}
                   </td>
                   <td className="px-3 py-3 text-sm font-mono whitespace-nowrap">
-                    {record.idNumber}
+                    {record.idCard}
                   </td>
                   <td className="px-3 py-3 text-sm font-medium text-green-600 whitespace-nowrap">
-                    +¥{record.amount.toLocaleString()}
+                    +¥{(record.amount || 0).toLocaleString()}
                   </td>
                   <td className="px-3 py-3 text-sm font-medium text-blue-600 whitespace-nowrap">
-                    ¥{record.giftAmount.toLocaleString()}
+                    ¥{(record.giftAmount || 0).toLocaleString()}
                   </td>
                   <td className="px-3 py-3 text-sm whitespace-nowrap">
-                    {record.salesName}
+                    {record.applyStaffName}
                   </td>
                   <td className="px-3 py-3 text-sm whitespace-nowrap">
-                    {record.shop}
+                    {record.storeName}
                   </td>
                   <td className="px-3 py-3 text-sm text-muted-foreground">
                     {record.remark || '-'}

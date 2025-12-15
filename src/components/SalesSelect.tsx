@@ -1,27 +1,34 @@
 import { useState, useRef, useEffect } from 'react';
-import { useDataStore } from '@/contexts/DataStore';
+import { useQuery } from '@tanstack/react-query';
+import { SalespersonsApi } from '@/services/admin';
 import { cn } from '@/lib/utils';
 
 interface SalesSelectProps {
-  value: string;
-  onChange: (salesId: string, salesName: string) => void;
+  value: number | undefined; // Changed to number to match API
+  onChange: (salesId: number, salesName: string) => void;
 }
 
 export default function SalesSelect({ value, onChange }: SalesSelectProps) {
-  const { salespersons } = useDataStore();
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  const { data: salesResp } = useQuery({
+    queryKey: ['salespersons'],
+    queryFn: () => SalespersonsApi.list({ page: 1, size: 100 }), // Assuming max 100 salespersons
+  });
+
+  const salespersons = salesResp?.data?.list || [];
+
   const filteredSales = salespersons.filter(
     (sp) =>
-      sp.name.toLowerCase().includes(search.toLowerCase()) ||
-      sp.salesId.toLowerCase().includes(search.toLowerCase())
+      (sp.name?.toLowerCase() || '').includes(search.toLowerCase()) ||
+      String(sp.id).includes(search)
   );
 
-  const selectedSales = salespersons.find((s) => s.salesId === value);
+  const selectedSales = salespersons.find((s) => s.id === value);
   const displayValue = selectedSales
-    ? `${selectedSales.salesId} ${selectedSales.name}`
+    ? `${selectedSales.id} ${selectedSales.name}`
     : '';
 
   useEffect(() => {
@@ -62,18 +69,20 @@ export default function SalesSelect({ value, onChange }: SalesSelectProps) {
           ) : (
             filteredSales.map((sp) => (
               <button
-                key={sp.salesId}
+                key={sp.id}
                 onClick={() => {
-                  onChange(sp.salesId, sp.name);
-                  setIsOpen(false);
-                  setSearch('');
+                  if (sp.id && sp.name) {
+                    onChange(sp.id, sp.name);
+                    setIsOpen(false);
+                    setSearch('');
+                  }
                 }}
                 className={cn(
                   'w-full text-left px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground',
-                  value === sp.salesId && 'bg-accent'
+                  value === sp.id && 'bg-accent'
                 )}
               >
-                {sp.salesId} {sp.name}
+                {sp.id} {sp.name}
               </button>
             ))
           )}

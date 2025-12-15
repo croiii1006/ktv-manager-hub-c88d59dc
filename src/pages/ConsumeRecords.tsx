@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react';
 import { ChevronUp, ChevronDown, ChevronsUpDown, Image } from 'lucide-react';
-import { useDataStore } from '@/contexts/DataStore';
-import { ConsumeRecord } from '@/types';
+import { useQuery } from '@tanstack/react-query';
+import { ConsumesApi } from '@/services/admin';
+import { ConsumeRecordResp } from '@/models';
 import {
   Dialog,
   DialogContent,
@@ -11,15 +12,21 @@ import {
 import { Button } from '@/components/ui/button';
 
 type SortDirection = 'asc' | 'desc' | null;
-type SortKey = keyof ConsumeRecord | null;
+type SortKey = keyof ConsumeRecordResp | null;
 
 export default function ConsumeRecords() {
-  const { consumeRecords } = useDataStore();
   const [sortKey, setSortKey] = useState<SortKey>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
   const [selectedVoucher, setSelectedVoucher] = useState<string | null>(null);
 
-  const handleSort = (key: keyof ConsumeRecord) => {
+  const { data: consumeResp } = useQuery({
+    queryKey: ['consumes'],
+    queryFn: () => ConsumesApi.list({ page: 1, size: 100 }),
+  });
+
+  const consumeRecords = consumeResp?.data?.list || [];
+
+  const handleSort = (key: keyof ConsumeRecordResp) => {
     if (sortKey === key) {
       if (sortDirection === 'asc') {
         setSortDirection('desc');
@@ -56,7 +63,7 @@ export default function ConsumeRecords() {
     });
   }, [consumeRecords, sortKey, sortDirection]);
 
-  const SortIcon = ({ columnKey }: { columnKey: keyof ConsumeRecord }) => {
+  const SortIcon = ({ columnKey }: { columnKey: keyof ConsumeRecordResp }) => {
     if (sortKey !== columnKey) {
       return <ChevronsUpDown className="h-3 w-3 text-muted-foreground/50" />;
     }
@@ -66,22 +73,19 @@ export default function ConsumeRecords() {
     return <ChevronDown className="h-3 w-3 text-foreground" />;
   };
 
-  const columns: { key: keyof ConsumeRecord; label: string }[] = [
-    { key: 'date', label: '日期' },
-    { key: 'time', label: '时间' },
+  const columns: { key: keyof ConsumeRecordResp; label: string }[] = [
+    { key: 'createdAt', label: '日期' },
     { key: 'memberId', label: '会员卡号' },
-    { key: 'cardType', label: '卡类型' },
+    { key: 'cardTypeName', label: '卡类型' },
     { key: 'memberName', label: '姓名' },
     { key: 'phone', label: '手机号码' },
-    { key: 'idNumber', label: '身份证号' },
-    { key: 'amount', label: '消费金额' },
+    { key: 'idCard', label: '身份证号' },
+    { key: 'consumeAmount', label: '消费金额' },
     { key: 'balance', label: '余额' },
-    { key: 'salesName', label: '业务员' },
-    { key: 'serviceSalesName', label: '服务业务员' },
-    { key: 'shop', label: '店铺' },
-    { key: 'roomNumber', label: '房间号' },
-    { key: 'paymentMethod', label: '支付方式' },
-    { key: 'content', label: '消费内容' },
+    { key: 'applyStaffName', label: '业务员' },
+    { key: 'receptionStaffName', label: '接待业务员' },
+    { key: 'storeName', label: '店铺' },
+    { key: 'roomNo', label: '房间号' },
     { key: 'remark', label: '备注' },
   ];
 
@@ -103,16 +107,13 @@ export default function ConsumeRecords() {
                   </div>
                 </th>
               ))}
-              <th className="px-3 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap">
-                支付凭证
-              </th>
             </tr>
           </thead>
           <tbody>
             {sortedRecords.length === 0 ? (
               <tr>
                 <td
-                  colSpan={columns.length + 1}
+                  colSpan={columns.length}
                   className="px-3 py-8 text-center text-muted-foreground"
                 >
                   暂无消费记录
@@ -125,16 +126,13 @@ export default function ConsumeRecords() {
                   className="border-b border-border hover:bg-muted/30 transition-colors"
                 >
                   <td className="px-3 py-3 text-sm whitespace-nowrap">
-                    {record.date}
-                  </td>
-                  <td className="px-3 py-3 text-sm whitespace-nowrap">
-                    {record.time || '-'}
+                    {record.createdAt?.split('T')[0]}
                   </td>
                   <td className="px-3 py-3 text-sm font-mono whitespace-nowrap">
                     {record.memberId}
                   </td>
                   <td className="px-3 py-3 text-sm whitespace-nowrap">
-                    {record.cardType}
+                    {record.cardTypeName}
                   </td>
                   <td className="px-3 py-3 text-sm whitespace-nowrap">
                     {record.memberName}
@@ -143,47 +141,28 @@ export default function ConsumeRecords() {
                     {record.phone}
                   </td>
                   <td className="px-3 py-3 text-sm font-mono whitespace-nowrap">
-                    {record.idNumber}
+                    {record.idCard}
                   </td>
                   <td className="px-3 py-3 text-sm font-medium text-red-600 whitespace-nowrap">
-                    ¥{record.amount.toLocaleString()}
+                    ¥{(record.consumeAmount || 0).toLocaleString()}
                   </td>
                   <td className="px-3 py-3 text-sm whitespace-nowrap">
-                    ¥{record.balance.toLocaleString()}
+                    ¥{(record.balance || 0).toLocaleString()}
                   </td>
                   <td className="px-3 py-3 text-sm whitespace-nowrap">
-                    {record.salesName}
+                    {record.applyStaffName}
                   </td>
                   <td className="px-3 py-3 text-sm whitespace-nowrap">
-                    {record.serviceSalesName || '-'}
+                    {record.receptionStaffName || '-'}
                   </td>
                   <td className="px-3 py-3 text-sm whitespace-nowrap">
-                    {record.shop}
+                    {record.storeName}
                   </td>
                   <td className="px-3 py-3 text-sm whitespace-nowrap">
-                    {record.roomNumber || '-'}
-                  </td>
-                  <td className="px-3 py-3 text-sm whitespace-nowrap">
-                    {record.paymentMethod || '-'}
-                  </td>
-                  <td className="px-3 py-3 text-sm">
-                    {record.content}
+                    {record.roomNo || '-'}
                   </td>
                   <td className="px-3 py-3 text-sm text-muted-foreground">
                     {record.remark || '-'}
-                  </td>
-                  <td className="px-3 py-3 text-sm">
-                    {record.paymentVoucher ? (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setSelectedVoucher(record.paymentVoucher!)}
-                      >
-                        <Image className="h-4 w-4" />
-                      </Button>
-                    ) : (
-                      '-'
-                    )}
                   </td>
                 </tr>
               ))

@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { DataStoreProvider } from '@/contexts/DataStore';
 import Layout from '@/components/Layout';
 import TeamLeaderManagement from './TeamLeaderManagement';
 import SalespersonManagement from './SalespersonManagement';
@@ -31,11 +30,9 @@ const Index = () => {
   };
 
   return (
-    <DataStoreProvider>
-      <Layout currentPage={currentPage} onPageChange={setCurrentPage}>
-        {renderPage()}
-      </Layout>
-    </DataStoreProvider>
+    <Layout currentPage={currentPage} onPageChange={setCurrentPage}>
+      {renderPage()}
+    </Layout>
   );
 };
 

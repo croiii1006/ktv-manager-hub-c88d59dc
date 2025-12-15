@@ -1,42 +1,72 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardHeader, CardContent, CardFooter, CardTitle } from "@/components/ui/card";
 
 export default function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const { login } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!username || !password) return;
+    
+    setLoading(true);
     const ok = await login(username, password);
+    setLoading(false);
+    
     if (ok) {
-      navigate("/dashboard");
-    } else {
-      alert("账号或密码错误（admin / 123456）");
+      navigate("/dashboard", { replace: true });
     }
   };
 
   return (
-    <div style={{ padding: 40, textAlign: "center" }}>
-      <h1>登录系统</h1>
-      <form onSubmit={handleSubmit} style={{ marginTop: 20 }}>
-        <input
-          placeholder="用户名：admin"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-        />
-        <br /><br />
-        <input
-          type="password"
-          placeholder="密码：123456"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        <br /><br />
-        <button type="submit">登录</button>
-      </form>
+    <div className="min-h-screen flex items-center justify-center bg-muted/20">
+      <Card className="w-full max-w-sm">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl">系统登录</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">用户名</label>
+              <Input
+                placeholder="请输入用户名"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                disabled={loading}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">密码</label>
+              <Input
+                type="password"
+                placeholder="请输入密码"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={loading}
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? "登录中..." : "登录"}
+            </Button>
+          </form>
+        </CardContent>
+        <CardFooter className="justify-center text-sm text-muted-foreground">
+          KTV 多门店营销管理系统
+        </CardFooter>
+      </Card>
     </div>
   );
 }

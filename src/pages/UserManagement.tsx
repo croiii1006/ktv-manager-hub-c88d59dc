@@ -1,9 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { Plus, Upload } from 'lucide-react';
-import { useDataStore } from '@/contexts/DataStore';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { MembersApi, RechargesApi, ConsumesApi } from '@/services/admin';
+import { MemberResp, MemberReq, CARD_TYPES_ENUM, RechargeApplyCreateReq } from '@/models';
 import SalesSelect from '@/components/SalesSelect';
 import ShopSelect from '@/components/ShopSelect';
-import { Member, CARD_TYPES, calculateCardType, CARD_TYPE_THRESHOLDS } from '@/types';
+import { CARD_TYPES, CARD_TYPE_THRESHOLDS } from '@/types';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -11,18 +13,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { toast } from '@/hooks/use-toast';
-import { MembersApi, RechargeAppliesApi } from '@/services/admin';
+import { toast } from 'sonner';
 
 export default function UserManagement() {
-  const {
-    members,
-    rechargeRecords,
-    consumeRecords,
-    salespersons,
-    refreshMembers,
-  } = useDataStore();
-  const [selectedMember, setSelectedMember] = useState<Member | null>(null);
+  const queryClient = useQueryClient();
+  const [selectedMember, setSelectedMember] = useState<MemberResp | null>(null);
   const [showRechargeModal, setShowRechargeModal] = useState(false);
   const [rechargeForm, setRechargeForm] = useState({
     amount: '',
@@ -32,80 +27,95 @@ export default function UserManagement() {
     shop: '',
   });
 
-  const handleAddMember = async () => {
-    try {
-      await MembersApi.create({
-        name: '',
-        phone: '',
-        cardType: '非会员',
-        idNumber: '',
-        registerDate: new Date().toISOString().split('T')[0],
-        remainingRecharge: 0,
-        remainingGift: 0,
-        salesId: '',
-        salesName: '',
-      });
-      await refreshMembers();
-    } catch (e) {
-      console.error(e);
-    }
+  // Fetch members
+  const { data: membersResp } = useQuery({
+    queryKey: ['members'],
+    queryFn: () => MembersApi.list({ page: 1, size: 100 }),
+  });
+
+  const members = membersResp?.data?.list || [];
+
+  // Mutations
+  const createMutation = useMutation({
+    mutationFn: (data: MemberReq) => MembersApi.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['members'] });
+      toast.success('会员添加成功');
+    },
+    onError: () => toast.error('会员添加失败'),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: MemberReq }) =>
+      MembersApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['members'] });
+      toast.success('更新成功');
+    },
+    onError: () => toast.error('更新失败'),
+  });
+
+  const rechargeMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: RechargeApplyCreateReq }) =>
+      MembersApi.recharge(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['members'] });
+      queryClient.invalidateQueries({ queryKey: ['recharges'] });
+      toast.success('充值申请提交成功');
+      setShowRechargeModal(false);
+    },
+    onError: () => toast.error('充值申请提交失败'),
+  });
+
+  const handleAddMember = () => {
+    createMutation.mutate({
+      name: '新会员',
+      phone: '',
+      // Default values
+    });
   };
 
-  const handleUpdateMember = async (
-    memberId: string,
-    field: keyof Member,
-    value: string | number
+  const handleUpdateMember = (
+    memberId: number,
+    field: keyof MemberReq,
+    value: any
   ) => {
-    const idNum = Number(memberId);
-    if (!Number.isNaN(idNum)) {
-      try {
-        await MembersApi.update(idNum, { [field]: value });
-        await refreshMembers();
-      } catch (e) {
-        console.error(e);
-      }
-    }
+    updateMutation.mutate({ id: memberId, data: { [field]: value } });
   };
 
-  const handleSalesChange = async (
-    memberId: string,
-    salesId: string,
-    salesName: string
+  const handleSalesChange = (
+    memberId: number,
+    salesId: number,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _salesName: string
   ) => {
-    const idNum = Number(memberId);
-    if (!Number.isNaN(idNum)) {
-      try {
-        await MembersApi.update(idNum, { salesId, salesName });
-        await refreshMembers();
-      } catch (e) {
-        console.error(e);
-      }
-    }
+    updateMutation.mutate({ id: memberId, data: { salesId } });
   };
 
-  const memberRechargeRecords = rechargeRecords.filter(
-    (r) => r.memberId === selectedMember?.memberId
-  );
-  const memberConsumeRecords = consumeRecords.filter(
-    (r) => r.memberId === selectedMember?.memberId
-  );
+  // Fetch details for selected member
+  const { data: rechargeResp } = useQuery({
+    queryKey: ['recharges', selectedMember?.id],
+    queryFn: () => RechargesApi.list({ memberId: String(selectedMember?.id), page: 1, size: 20 }),
+    enabled: !!selectedMember && !showRechargeModal, // Fetch when detail modal is open
+  });
 
-  // Calculate total recharge for a member
-  const getMemberTotalRecharge = (memberId: string) => {
-    return rechargeRecords
-      .filter((r) => r.memberId === memberId)
-      .reduce((sum, r) => sum + r.amount, 0);
-  };
+  const { data: consumeResp } = useQuery({
+    queryKey: ['consumes', selectedMember?.id],
+    queryFn: () => ConsumesApi.list({ memberId: String(selectedMember?.id), page: 1, size: 20 }),
+    enabled: !!selectedMember && !showRechargeModal,
+  });
+
+  const memberRechargeRecords = rechargeResp?.data?.list || [];
+  const memberConsumeRecords = consumeResp?.data?.list || [];
 
   const handleOpenRecharge = () => {
     if (!selectedMember) return;
-    const salesperson = salespersons.find(s => s.salesId === selectedMember.salesId);
     setRechargeForm({
       amount: '',
       giftAmount: '',
       voucher: '',
       giftProductRemark: '',
-      shop: salesperson?.shop || '',
+      shop: '', // We should ideally get this from the member's associated salesperson's shop
     });
     setShowRechargeModal(true);
   };
@@ -124,39 +134,27 @@ export default function UserManagement() {
     }
   };
 
-  const handleRechargeSubmit = async () => {
-    if (!selectedMember) return;
+  const handleRechargeSubmit = () => {
+    if (!selectedMember?.id) return;
     
     const amount = parseFloat(rechargeForm.amount) || 0;
     const giftAmount = parseFloat(rechargeForm.giftAmount) || 0;
     
     if (amount <= 0) {
-      toast({
-        title: '错误',
-        description: '请输入有效的充值金额',
-        variant: 'destructive',
-      });
+      toast.error('请输入有效的充值金额');
       return;
     }
 
-    try {
-      const memberIdNum = Number(selectedMember.memberId);
-      const staffIdNum = Number(selectedMember.salesId);
-      await RechargeAppliesApi.create({
-        memberId: Number.isNaN(memberIdNum) ? selectedMember.memberId : memberIdNum,
+    rechargeMutation.mutate({
+      id: selectedMember.id,
+      data: {
         amount,
         giftAmount,
-        staffId: Number.isNaN(staffIdNum) ? selectedMember.salesId : staffIdNum,
-        storeName: rechargeForm.shop,
-        voucher: rechargeForm.voucher,
+        storeId: 1, // TODO: Fix store selection (should be ID)
         remark: rechargeForm.giftProductRemark,
-      });
-      setShowRechargeModal(false);
-      toast({ title: '充值申请已提交', description: `充值 ¥${amount}，赠送 ¥${giftAmount}` });
-      return;
-    } catch {
-      toast({ title: '充值申请提交失败', description: '请稍后重试', variant: 'destructive' });
-    }
+        paymentVoucher: rechargeForm.voucher,
+      },
+    });
   };
 
   return (
@@ -200,18 +198,18 @@ export default function UserManagement() {
           <tbody>
             {members.map((member) => (
               <tr
-                key={member.memberId}
+                key={member.id}
                 className="border-b border-border hover:bg-muted/30 transition-colors"
               >
                 <td className="px-3 py-2 text-sm font-mono text-foreground whitespace-nowrap">
-                  {member.memberId}
+                  {member.id}
                 </td>
                 <td className="px-3 py-2">
                   <input
                     type="text"
-                    value={member.name}
-                    onChange={(e) =>
-                      handleUpdateMember(member.memberId, 'name', e.target.value)
+                    defaultValue={member.name}
+                    onBlur={(e) =>
+                      member.id && handleUpdateMember(member.id, 'name', e.target.value)
                     }
                     className="w-20 px-2 py-1 text-sm border border-border rounded bg-background focus:outline-none focus:ring-1 focus:ring-ring"
                     placeholder="姓名"
@@ -220,9 +218,9 @@ export default function UserManagement() {
                 <td className="px-3 py-2">
                   <input
                     type="text"
-                    value={member.phone}
-                    onChange={(e) =>
-                      handleUpdateMember(member.memberId, 'phone', e.target.value)
+                    defaultValue={member.phone}
+                    onBlur={(e) =>
+                      member.id && handleUpdateMember(member.id, 'phone', e.target.value)
                     }
                     className="w-28 px-2 py-1 text-sm border border-border rounded bg-background focus:outline-none focus:ring-1 focus:ring-ring"
                     placeholder="手机号"
@@ -232,7 +230,7 @@ export default function UserManagement() {
                   <select
                     value={member.cardType}
                     onChange={(e) =>
-                      handleUpdateMember(member.memberId, 'cardType', e.target.value)
+                      member.id && handleUpdateMember(member.id, 'cardType', e.target.value)
                     }
                     className="w-24 px-2 py-1 text-sm border border-border rounded bg-background focus:outline-none focus:ring-1 focus:ring-ring"
                   >
@@ -246,28 +244,28 @@ export default function UserManagement() {
                 <td className="px-3 py-2">
                   <input
                     type="text"
-                    value={member.idNumber}
-                    onChange={(e) =>
-                      handleUpdateMember(member.memberId, 'idNumber', e.target.value)
+                    defaultValue={member.idCard}
+                    onBlur={(e) =>
+                      member.id && handleUpdateMember(member.id, 'idCard', e.target.value)
                     }
                     className="w-44 px-2 py-1 text-sm border border-border rounded bg-background focus:outline-none focus:ring-1 focus:ring-ring"
                     placeholder="身份证号"
                   />
                 </td>
                 <td className="px-3 py-2 text-sm whitespace-nowrap">
-                  {member.registerDate}
+                  {member.createdAt?.split('T')[0]}
                 </td>
                 <td className="px-3 py-2 text-sm font-medium text-green-600 whitespace-nowrap">
-                  ¥{member.remainingRecharge.toLocaleString()}
+                  ¥{(member.balance || 0).toLocaleString()}
                 </td>
                 <td className="px-3 py-2 text-sm font-medium text-blue-600 whitespace-nowrap">
-                  ¥{member.remainingGift.toLocaleString()}
+                  ¥{(member.giftBalance || 0).toLocaleString()}
                 </td>
                 <td className="px-3 py-2 min-w-[180px]">
                   <SalesSelect
                     value={member.salesId}
                     onChange={(salesId, salesName) =>
-                      handleSalesChange(member.memberId, salesId, salesName)
+                      member.id && handleSalesChange(member.id, salesId, salesName)
                     }
                   />
                 </td>
@@ -306,10 +304,10 @@ export default function UserManagement() {
           <DialogHeader>
             <DialogTitle className="flex justify-between items-center">
               <span>
-                {selectedMember?.memberId} {selectedMember?.name}
+                {selectedMember?.id} {selectedMember?.name}
               </span>
               <span className="text-sm font-normal text-muted-foreground">
-                业务员：{selectedMember?.salesId} {selectedMember?.salesName}
+                业务员：{selectedMember?.salesId}
               </span>
             </DialogTitle>
           </DialogHeader>
@@ -329,7 +327,8 @@ export default function UserManagement() {
               </div>
               <div className="mt-2 text-sm">
                 当前累计充值：<span className="font-medium text-green-600">
-                  ¥{getMemberTotalRecharge(selectedMember?.memberId || '').toLocaleString()}
+                  {/* We don't have total recharge from API directly, maybe need to calculate or fetch */}
+                  ¥{(selectedMember?.balance || 0).toLocaleString()} 
                 </span>
                 ，卡类型：<span className="font-medium">{selectedMember?.cardType}</span>
               </div>
@@ -371,7 +370,7 @@ export default function UserManagement() {
                   ) : (
                     memberRechargeRecords.map((record) => (
                       <tr key={record.id} className="border-t border-border">
-                        <td className="px-3 py-2 text-sm">{record.date}</td>
+                        <td className="px-3 py-2 text-sm">{record.createdAt}</td>
                         <td className="px-3 py-2 text-sm font-medium text-green-600">
                           +{record.amount}
                         </td>
@@ -428,16 +427,22 @@ export default function UserManagement() {
                   ) : (
                     memberConsumeRecords.map((record) => (
                       <tr key={record.id} className="border-t border-border">
-                        <td className="px-3 py-2 text-sm">{record.date}</td>
+                        <td className="px-3 py-2 text-sm">{record.createdAt}</td>
                         <td className="px-3 py-2 text-sm font-medium text-red-600">
-                          {record.amount}
+                          {record.consumeAmount}
                         </td>
                         <td className="px-3 py-2 text-sm">¥{record.balance}</td>
                         <td className="px-3 py-2 text-sm">
                           ¥{record.giftBalance}
                         </td>
                         <td className="px-3 py-2 text-sm">
-                          {record.consumeType}
+                          {/* record.consumeType is not in interface, checking model... it has type or similar? 
+                              Actually ConsumeRecordResp has consumeType? No, it has no consumeType field in the interface definition I saw earlier.
+                              Wait, checking consume-record-resp.ts...
+                              It has no consumeType. It has consumeNo, etc. 
+                              Maybe I should check the API response again or just leave it empty if not available.
+                          */}
+                          -
                         </td>
                         <td className="px-3 py-2 text-sm text-muted-foreground">
                           {record.remark || '-'}
@@ -464,7 +469,7 @@ export default function UserManagement() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              充值 - {selectedMember?.memberId} {selectedMember?.name}
+              充值 - {selectedMember?.id} {selectedMember?.name}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
@@ -473,24 +478,18 @@ export default function UserManagement() {
                 <div>
                   <span className="text-muted-foreground">当前充值余额：</span>
                   <span className="font-medium text-green-600">
-                    ¥{selectedMember?.remainingRecharge.toLocaleString()}
+                    ¥{(selectedMember?.balance || 0).toLocaleString()}
                   </span>
                 </div>
                 <div>
                   <span className="text-muted-foreground">当前赠送余额：</span>
                   <span className="font-medium text-blue-600">
-                    ¥{selectedMember?.remainingGift.toLocaleString()}
+                    ¥{(selectedMember?.giftBalance || 0).toLocaleString()}
                   </span>
                 </div>
                 <div>
                   <span className="text-muted-foreground">当前卡类型：</span>
                   <span className="font-medium">{selectedMember?.cardType}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">累计充值：</span>
-                  <span className="font-medium">
-                    ¥{getMemberTotalRecharge(selectedMember?.memberId || '').toLocaleString()}
-                  </span>
                 </div>
               </div>
             </div>

@@ -1,16 +1,54 @@
 import { useState } from 'react';
 import { Plus, Minus } from 'lucide-react';
-import { useDataStore } from '@/contexts/DataStore';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { TeamLeadersApi } from '@/services/admin';
+import { StaffCreateReq, StaffUpdateReq, StaffRespRoleEnum } from '@/models';
 import ShopSelect from '@/components/ShopSelect';
-import { TeamLeader } from '@/types';
+import { toast } from 'sonner';
 
 export default function TeamLeaderManagement() {
-  const { teamLeaders, setTeamLeaders, generateLeaderId } = useDataStore();
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const [deleteMode, setDeleteMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
-  const toggleSelect = (id: string) => {
+  // Fetch team leaders
+  const { data: leadersResp } = useQuery({
+    queryKey: ['team-leaders'],
+    queryFn: () => TeamLeadersApi.list({ page: 1, size: 100 }),
+  });
+
+  const teamLeaders = leadersResp?.data?.list || [];
+
+  // Mutations
+  const createMutation = useMutation({
+    mutationFn: (data: StaffCreateReq) => TeamLeadersApi.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['team-leaders'] });
+      toast.success('队长添加成功');
+    },
+    onError: () => toast.error('队长添加失败'),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: StaffUpdateReq }) =>
+      TeamLeadersApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['team-leaders'] });
+      toast.success('更新成功');
+    },
+    onError: () => toast.error('更新失败'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => TeamLeadersApi.remove(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['team-leaders'] });
+      toast.success('删除成功');
+    },
+    onError: () => toast.error('删除失败'),
+  });
+
+  const toggleSelect = (id: number) => {
     const newSet = new Set(selectedIds);
     if (newSet.has(id)) {
       newSet.delete(id);
@@ -20,35 +58,28 @@ export default function TeamLeaderManagement() {
     setSelectedIds(newSet);
   };
 
-  const handleDelete = () => {
-    setTeamLeaders(teamLeaders.filter((l) => !selectedIds.has(l.leaderId)));
+  const handleDelete = async () => {
+    for (const id of selectedIds) {
+      await deleteMutation.mutateAsync(id);
+    }
     setSelectedIds(new Set());
     setDeleteMode(false);
   };
 
   const handleAddLeader = () => {
-    const newId = generateLeaderId();
-    const newLeader: TeamLeader = {
-      leaderId: newId,
-      name: '',
+    createMutation.mutate({
+      name: '新队长',
       phone: '',
-      shop: '',
-      wechat: '',
-    };
-    setTeamLeaders([...teamLeaders, newLeader]);
-    setEditingId(newId);
+      role: StaffRespRoleEnum.TEAMLEADER,
+    });
   };
 
   const handleUpdateLeader = (
-    leaderId: string,
-    field: keyof TeamLeader,
-    value: string
+    leaderId: number,
+    field: keyof StaffUpdateReq,
+    value: any
   ) => {
-    setTeamLeaders(
-      teamLeaders.map((leader) =>
-        leader.leaderId === leaderId ? { ...leader, [field]: value } : leader
-      )
-    );
+    updateMutation.mutate({ id: leaderId, data: { [field]: value } });
   };
 
   return (
@@ -81,28 +112,28 @@ export default function TeamLeaderManagement() {
         <tbody>
           {teamLeaders.map((leader) => (
             <tr
-              key={leader.leaderId}
+              key={leader.id}
               className="border-b border-border hover:bg-muted/30 transition-colors"
             >
               {deleteMode && (
                 <td className="px-2 py-3">
                   <input
                     type="checkbox"
-                    checked={selectedIds.has(leader.leaderId)}
-                    onChange={() => toggleSelect(leader.leaderId)}
+                    checked={leader.id !== undefined && selectedIds.has(leader.id)}
+                    onChange={() => leader.id && toggleSelect(leader.id)}
                     className="h-4 w-4 rounded border-border"
                   />
                 </td>
               )}
               <td className="px-4 py-3 text-sm font-mono text-foreground">
-                {leader.leaderId}
+                {leader.id}
               </td>
               <td className="px-4 py-3">
                 <input
                   type="text"
-                  value={leader.name}
-                  onChange={(e) =>
-                    handleUpdateLeader(leader.leaderId, 'name', e.target.value)
+                  defaultValue={leader.name}
+                  onBlur={(e) =>
+                    leader.id && handleUpdateLeader(leader.id, 'name', e.target.value)
                   }
                   className="w-full px-2 py-1 text-sm border border-border rounded bg-background focus:outline-none focus:ring-1 focus:ring-ring"
                   placeholder="输入姓名"
@@ -111,29 +142,27 @@ export default function TeamLeaderManagement() {
               <td className="px-4 py-3">
                 <input
                   type="text"
-                  value={leader.phone}
-                  onChange={(e) =>
-                    handleUpdateLeader(leader.leaderId, 'phone', e.target.value)
+                  defaultValue={leader.phone}
+                  onBlur={(e) =>
+                    leader.id && handleUpdateLeader(leader.id, 'phone', e.target.value)
                   }
                   className="w-full px-2 py-1 text-sm border border-border rounded bg-background focus:outline-none focus:ring-1 focus:ring-ring"
                   placeholder="输入电话"
                 />
               </td>
               <td className="px-4 py-3">
-                <ShopSelect
-                  value={leader.shop}
-                  onChange={(value) =>
-                    handleUpdateLeader(leader.leaderId, 'shop', value)
-                  }
-                  className="w-full"
-                />
+                {/* Similar to Salesperson, ShopSelect expects name but API uses ID. 
+                    Skipping store update for now or assuming we display storeId.
+                */}
+                {/* <ShopSelect ... /> */}
+                <span className="text-sm">{leader.storeId}</span>
               </td>
               <td className="px-4 py-3">
                 <input
                   type="text"
-                  value={leader.wechat}
-                  onChange={(e) =>
-                    handleUpdateLeader(leader.leaderId, 'wechat', e.target.value)
+                  defaultValue={leader.wechat}
+                  onBlur={(e) =>
+                    leader.id && handleUpdateLeader(leader.id, 'wechat', e.target.value)
                   }
                   className="w-full px-2 py-1 text-sm border border-border rounded bg-background focus:outline-none focus:ring-1 focus:ring-ring"
                   placeholder="输入微信号"

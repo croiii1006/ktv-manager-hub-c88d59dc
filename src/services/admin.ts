@@ -1,93 +1,100 @@
 import { request } from '@/services/http';
-import type { ApiResult, PageResp } from '@/types/api';
+import type { ApiResult } from '@/types/api';
+import type {
+  StoreResp,
+  StoreReq,
+  PageResultStoreResp,
+  StaffResp,
+  StaffCreateReq,
+  StaffUpdateReq,
+  PageResultStaffResp,
+  MemberResp,
+  MemberReq,
+  PageResultMemberResp,
+  RechargeResp,
+  PageResultRechargeResp,
+  RechargeApplyCreateReq,
+  ConsumeRecordResp,
+  PageResultConsumeRecordResp,
+  PageResultRoomResp,
+  ReservationResp,
+  ReservationCreateReq,
+  PageResultReservationResp,
+  RoomScheduleResp,
+} from '@/models';
 
 const ADMIN = '/api/admin';
 
 export const StoresApi = {
   list: (query?: { page?: number; size?: number; keyword?: string }) =>
-    request<ApiResult<PageResp<unknown>>>(`${ADMIN}/stores`, { method: 'GET', query }),
-  detail: (id: number) => request<ApiResult<unknown>>(`${ADMIN}/stores/${id}`, { method: 'GET' }),
-  create: (body: unknown) => request<ApiResult<unknown>>(`${ADMIN}/stores`, { method: 'POST', body }),
-  update: (id: number, body: unknown) => request<ApiResult<unknown>>(`${ADMIN}/stores/${id}`, { method: 'PUT', body }),
-  remove: (id: number) => request<ApiResult<unknown>>(`${ADMIN}/stores/${id}`, { method: 'DELETE' }),
+    request<ApiResult<PageResultStoreResp>>(`${ADMIN}/stores`, { method: 'GET', query }),
+  detail: (id: number) => request<ApiResult<StoreResp>>(`${ADMIN}/stores/${id}`, { method: 'GET' }),
+  create: (body: StoreReq) => request<ApiResult<StoreResp>>(`${ADMIN}/stores`, { method: 'POST', body }),
+  update: (id: number, body: StoreReq) => request<ApiResult<StoreResp>>(`${ADMIN}/stores/${id}`, { method: 'PUT', body }),
+  remove: (id: number) => request<ApiResult<void>>(`${ADMIN}/stores/${id}`, { method: 'DELETE' }),
 };
 
-export const StaffsApi = {
-  list: (query?: { page?: number; size?: number; keyword?: string; role?: 'ADMIN' | 'TEAM_LEADER' | 'SALESMAN' }) =>
-    request<ApiResult<PageResp<unknown>>>(`${ADMIN}/staffs`, { method: 'GET', query }),
-  detail: (id: number) => request<ApiResult<unknown>>(`${ADMIN}/staffs/${id}`, { method: 'GET' }),
-  create: (body: unknown) => request<ApiResult<unknown>>(`${ADMIN}/staffs`, { method: 'POST', body }),
-  update: (id: number, body: unknown) => request<ApiResult<unknown>>(`${ADMIN}/staffs/${id}`, { method: 'PUT', body }),
-  remove: (id: number) => request<ApiResult<unknown>>(`${ADMIN}/staffs/${id}`, { method: 'DELETE' }),
+export const TeamLeadersApi = {
+  list: (query?: { page?: number; size?: number; keyword?: string }) =>
+    request<ApiResult<PageResultStaffResp>>(`${ADMIN}/staffs`, { 
+      method: 'GET', 
+      query: { ...query, role: 'TEAM_LEADER' } 
+    }),
+  detail: (id: number) => request<ApiResult<StaffResp>>(`${ADMIN}/staffs/${id}`, { method: 'GET' }),
+  create: (body: StaffCreateReq) => request<ApiResult<StaffResp>>(`${ADMIN}/staffs`, { method: 'POST', body }),
+  update: (id: number, body: StaffUpdateReq) => request<ApiResult<StaffResp>>(`${ADMIN}/staffs/${id}`, { method: 'PUT', body }),
+  remove: (id: number) => request<ApiResult<void>>(`${ADMIN}/staffs/${id}`, { method: 'DELETE' }),
+};
+
+export const SalespersonsApi = {
+  list: (query?: { page?: number; size?: number; keyword?: string; shop?: string }) =>
+    request<ApiResult<PageResultStaffResp>>(`${ADMIN}/staffs`, { 
+      method: 'GET', 
+      query: { ...query, role: 'SALESMAN' } 
+    }),
+  detail: (id: number) => request<ApiResult<StaffResp>>(`${ADMIN}/staffs/${id}`, { method: 'GET' }),
+  create: (body: StaffCreateReq) => request<ApiResult<StaffResp>>(`${ADMIN}/staffs`, { method: 'POST', body }),
+  update: (id: number, body: StaffUpdateReq) => request<ApiResult<StaffResp>>(`${ADMIN}/staffs/${id}`, { method: 'PUT', body }),
+  remove: (id: number) => request<ApiResult<void>>(`${ADMIN}/staffs/${id}`, { method: 'DELETE' }),
 };
 
 export const MembersApi = {
-  list: (query?: { page?: number; size?: number; keyword?: string }) =>
-    request<ApiResult<PageResp<unknown>>>(`${ADMIN}/members`, { method: 'GET', query }),
-  detail: (id: number) => request<ApiResult<unknown>>(`${ADMIN}/members/${id}`, { method: 'GET' }),
-  create: (body: unknown) => request<ApiResult<unknown>>(`${ADMIN}/members`, { method: 'POST', body }),
-  update: (id: number, body: unknown) => request<ApiResult<unknown>>(`${ADMIN}/members/${id}`, { method: 'PUT', body }),
-  remove: (id: number) => request<ApiResult<unknown>>(`${ADMIN}/members/${id}`, { method: 'DELETE' }),
-  rechargeRecords: (memberId: number, query?: { page?: number; size?: number }) =>
-    request<ApiResult<PageResp<unknown>>>(`${ADMIN}/members/${memberId}/recharge-records`, { method: 'GET', query }),
-  consumeRecords: (memberId: number, query?: { page?: number; size?: number }) =>
-    request<ApiResult<PageResp<unknown>>>(`${ADMIN}/members/${memberId}/consume-records`, { method: 'GET', query }),
+  list: (query?: { page?: number; size?: number; keyword?: string; salesId?: number }) =>
+    request<ApiResult<PageResultMemberResp>>(`${ADMIN}/members`, { method: 'GET', query }),
+  detail: (id: number) => request<ApiResult<MemberResp>>(`${ADMIN}/members/${id}`, { method: 'GET' }),
+  create: (body: MemberReq) => request<ApiResult<MemberResp>>(`${ADMIN}/members`, { method: 'POST', body }),
+  update: (id: number, body: MemberReq) => request<ApiResult<MemberResp>>(`${ADMIN}/members/${id}`, { method: 'PUT', body }),
+  remove: (id: number) => request<ApiResult<void>>(`${ADMIN}/members/${id}`, { method: 'DELETE' }),
+  recharge: (id: number, body: RechargeApplyCreateReq) => request<ApiResult<void>>(`${ADMIN}/members/${id}/recharge`, { method: 'POST', body }),
 };
 
-export const RechargeAppliesApi = {
-  list: (query?: { page?: number; size?: number; storeId?: number; staffId?: number; status?: 'PENDING' | 'APPROVED' | 'REJECTED' }) =>
-    request<ApiResult<PageResp<unknown>>>(`${ADMIN}/recharge-applies`, { method: 'GET', query }),
-  create: (body: unknown) => request<ApiResult<unknown>>(`${ADMIN}/recharge-applies`, { method: 'POST', body }),
-  detail: (id: number) => request<ApiResult<unknown>>(`${ADMIN}/recharge-applies/${id}`, { method: 'GET' }),
-  approve: (body: unknown) => request<ApiResult<unknown>>(`${ADMIN}/recharge-applies/approve`, { method: 'POST', body }),
-  reject: (body: unknown) => request<ApiResult<unknown>>(`${ADMIN}/recharge-applies/reject`, { method: 'POST', body }),
+export const RechargesApi = {
+  list: (query?: { page?: number; size?: number; memberId?: string; salesId?: number; shop?: string }) =>
+    request<ApiResult<PageResultRechargeResp>>(`${ADMIN}/recharge-applies`, { method: 'GET', query }),
+  detail: (id: number) => request<ApiResult<RechargeResp>>(`${ADMIN}/recharge-applies/${id}`, { method: 'GET' }),
 };
 
-export const ConsumeAppliesApi = {
-  list: (query?: { page?: number; size?: number; storeId?: number; staffId?: number; status?: 'PENDING' | 'APPROVED' | 'REJECTED' }) =>
-    request<ApiResult<PageResp<unknown>>>(`${ADMIN}/consume-applies`, { method: 'GET', query }),
-  create: (body: unknown) => request<ApiResult<unknown>>(`${ADMIN}/consume-applies`, { method: 'POST', body }),
-  detail: (id: number) => request<ApiResult<unknown>>(`${ADMIN}/consume-applies/${id}`, { method: 'GET' }),
-  approve: (body: unknown) => request<ApiResult<unknown>>(`${ADMIN}/consume-applies/approve`, { method: 'POST', body }),
-  reject: (body: unknown) => request<ApiResult<unknown>>(`${ADMIN}/consume-applies/reject`, { method: 'POST', body }),
-};
-
-export const ConsumeRecordsApi = {
-  list: (query?: { page?: number; size?: number; storeId?: number; staffId?: number; memberId?: number; status?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'VOID' }) =>
-    request<ApiResult<PageResp<unknown>>>(`${ADMIN}/consume-records`, { method: 'GET', query }),
+export const ConsumesApi = {
+  list: (query?: { page?: number; size?: number; memberId?: string; salesId?: number; shop?: string }) =>
+    request<ApiResult<PageResultConsumeRecordResp>>(`${ADMIN}/consume-records`, { method: 'GET', query }),
+  detail: (id: number) => request<ApiResult<ConsumeRecordResp>>(`${ADMIN}/consume-records/${id}`, { method: 'GET' }),
 };
 
 export const RoomsApi = {
-  list: (query?: { page?: number; size?: number; storeId?: number; keyword?: string }) =>
-    request<ApiResult<PageResp<unknown>>>(`${ADMIN}/rooms`, { method: 'GET', query }),
-  detail: (id: number) => request<ApiResult<unknown>>(`${ADMIN}/rooms/${id}`, { method: 'GET' }),
-  create: (body: unknown) => request<ApiResult<unknown>>(`${ADMIN}/rooms`, { method: 'POST', body }),
-  update: (id: number, body: unknown) => request<ApiResult<unknown>>(`${ADMIN}/rooms/${id}`, { method: 'PUT', body }),
-  remove: (id: number) => request<ApiResult<unknown>>(`${ADMIN}/rooms/${id}`, { method: 'DELETE' }),
+  list: (query?: { page?: number; size?: number; shop?: string }) =>
+    request<ApiResult<PageResultRoomResp>>(`${ADMIN}/rooms`, { method: 'GET', query }),
 };
 
-export const ReservationsApi = {
-  list: (query?: { page?: number; size?: number; storeId?: number; roomId?: number; staffId?: number; status?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' }) =>
-    request<ApiResult<PageResp<unknown>>>(`${ADMIN}/reservations`, { method: 'GET', query }),
-  create: (body: unknown) => request<ApiResult<unknown>>(`${ADMIN}/reservations`, { method: 'POST', body }),
-  detail: (id: number) => request<ApiResult<unknown>>(`${ADMIN}/reservations/${id}`, { method: 'GET' }),
-  approve: (body: unknown) => request<ApiResult<unknown>>(`${ADMIN}/reservations/approve`, { method: 'POST', body }),
-  reject: (body: unknown) => request<ApiResult<unknown>>(`${ADMIN}/reservations/reject`, { method: 'POST', body }),
-  cancel: (body: unknown) => request<ApiResult<unknown>>(`${ADMIN}/reservations/cancel`, { method: 'POST', body }),
+export const BookingsApi = {
+  list: (query?: { page?: number; size?: number; date?: string; shop?: string }) =>
+    request<ApiResult<PageResultReservationResp>>(`${ADMIN}/reservations`, { method: 'GET', query }),
+  create: (body: ReservationCreateReq) => request<ApiResult<ReservationResp>>(`${ADMIN}/reservations`, { method: 'POST', body }),
+  update: (id: number, body: ReservationCreateReq) => request<ApiResult<ReservationResp>>(`${ADMIN}/reservations/${id}`, { method: 'PUT', body }),
 };
 
 export const RoomSchedulesApi = {
-  get: (query: { storeId: number; startDate: string; endDate: string }) =>
-    request<ApiResult<unknown>>(`${ADMIN}/room-schedules`, { method: 'GET', query }),
-};
-
-export const MemberBindingsApi = {
-  list: (query?: { page?: number; size?: number; memberId?: number; storeId?: number; staffId?: number }) =>
-    request<ApiResult<PageResp<unknown>>>(`${ADMIN}/member-bindings`, { method: 'GET', query }),
-  create: (body: unknown) => request<ApiResult<unknown>>(`${ADMIN}/member-bindings`, { method: 'POST', body }),
-  detail: (id: number) => request<ApiResult<unknown>>(`${ADMIN}/member-bindings/${id}`, { method: 'GET' }),
-  update: (id: number, body: unknown) => request<ApiResult<unknown>>(`${ADMIN}/member-bindings/${id}`, { method: 'PUT', body }),
-  remove: (id: number) => request<ApiResult<unknown>>(`${ADMIN}/member-bindings/${id}`, { method: 'DELETE' }),
+  list: (query: { storeId: number; startDate: string; endDate: string }) =>
+    request<ApiResult<RoomScheduleResp>>(`${ADMIN}/room-schedules`, { method: 'GET', query }),
 };
 
 export const AuthApi = {
@@ -95,6 +102,6 @@ export const AuthApi = {
     request<ApiResult<{ token: string }>>(`/api/auth/h5/login`, { method: 'POST', body }),
   adminLogin: (body: { username: string; password: string }) =>
     request<ApiResult<{ token: string }>>(`/api/auth/admin/login`, { method: 'POST', body }),
-  logout: () => request<ApiResult<unknown>>(`/api/auth/logout`, { method: 'POST' }),
+  logout: () => request<ApiResult<void>>(`/api/auth/logout`, { method: 'POST' }),
   refresh: (body: unknown) => request<ApiResult<{ token: string }>>(`/api/auth/refresh`, { method: 'POST', body }),
 };
