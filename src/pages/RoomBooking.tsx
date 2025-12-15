@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { format, addDays } from 'date-fns';
+import { format, addDays, subDays } from 'date-fns';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { BookingsApi, RoomSchedulesApi, MembersApi, StoresApi } from '@/services/admin';
-import { ReservationCreateReq, RoomScheduleBookingResp } from '@/models';
+import { ReservationCreateReq, RoomScheduleBookingResp, ReservationCancelReq } from '@/models';
 import { PAYMENT_METHODS } from '@/types';
 import { Button } from '@/components/ui/button';
+import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -19,16 +20,20 @@ export default function RoomBooking() {
   const queryClient = useQueryClient();
   const [selectedBooking, setSelectedBooking] =
     useState<RoomScheduleBookingResp | null>(null);
-  const [selectedRoom, setSelectedRoom] = useState<{ roomNo: string; roomType: string; storeName: string } | null>(null);
+  const [selectedRoom, setSelectedRoom] = useState<{ roomId: number; roomNo: string; roomType: string; storeName: string } | null>(null);
   const [selectedDate, setSelectedDate] = useState<string>('');
   
   const [modalMode, setModalMode] = useState<
     'book' | 'booked' | 'finished' | 'payment' | null
   >(null);
   const [earlyTerminationReason, setEarlyTerminationReason] = useState('');
+  const [cancelReason, setCancelReason] = useState('');
   
   // Store selection
   const [selectedStoreId, setSelectedStoreId] = useState<number | null>(null);
+
+  // Date range
+  const [currentStartDate, setCurrentStartDate] = useState(new Date());
 
   // 预定表单
   const [bookingForm, setBookingForm] = useState({
@@ -54,21 +59,20 @@ export default function RoomBooking() {
     setSelectedStoreId(stores[0].id);
   }
 
-  // Date range
-  const today = new Date();
+  // Calculate dates
   const dateColumns = Array.from({ length: 7 }, (_, i) =>
-    format(addDays(today, i), 'yyyy-MM-dd')
+    format(addDays(currentStartDate, i), 'yyyy-MM-dd')
   );
-  const startDate = dateColumns[0];
-  const endDate = dateColumns[6];
+  const startDateStr = dateColumns[0];
+  const endDateStr = dateColumns[6];
 
   // Fetch schedule
   const { data: scheduleResp } = useQuery({
-    queryKey: ['room-schedules', selectedStoreId, startDate, endDate],
+    queryKey: ['room-schedules', selectedStoreId, startDateStr, endDateStr],
     queryFn: () => RoomSchedulesApi.list({ 
       storeId: selectedStoreId!, 
-      startDate, 
-      endDate 
+      startDate: startDateStr, 
+      endDate: endDateStr
     }),
     enabled: !!selectedStoreId,
   });
@@ -85,7 +89,7 @@ export default function RoomBooking() {
 
   // Mutations
   const createBookingMutation = useMutation({
-    mutationFn: (data: ReservationCreateReq) => BookingsApi.create(data),
+    mutationFn: (data: any) => BookingsApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['room-schedules'] });
       toast.success('预定成功');
@@ -107,6 +111,18 @@ export default function RoomBooking() {
     onError: () => toast.error('更新失败'),
   });
 
+  const cancelBookingMutation = useMutation({
+    mutationFn: (data: ReservationCancelReq) => BookingsApi.cancel(data.id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['room-schedules'] });
+      toast.success('取消成功');
+      setModalMode(null);
+      setSelectedBooking(null);
+      setCancelReason('');
+    },
+    onError: () => toast.error('取消失败'),
+  });
+
   // 支付表单
   const [paymentForm, setPaymentForm] = useState({
     serviceSalesId: 0,
@@ -120,7 +136,9 @@ export default function RoomBooking() {
     const booking = room.bookings?.[date] as RoomScheduleBookingResp | undefined;
     
     // Store room info for modal
+    // room object from schedule likely contains id which is the roomId
     setSelectedRoom({
+      roomId: room.id,
       roomNo: room.roomNo,
       roomType: room.roomType,
       storeName: stores.find(s => s.id === selectedStoreId)?.name || '',
@@ -142,19 +160,14 @@ export default function RoomBooking() {
     } else {
       setSelectedBooking(booking);
       // Determine mode based on status
-      // RoomScheduleBookingResp might have status field?
-      // Checking definition... it usually has status.
-      // If not, we assume based on presence.
-      // Let's assume 'status' field exists or map from another field.
-      // If status is not in RoomScheduleBookingResp, we might need to fetch detail or guess.
-      // Assuming it has status.
-      const status = booking.status; // Need to check if this field exists
+      const status = booking.status; 
       
       if (status === 'COMPLETED') {
         setModalMode('finished');
         setEarlyTerminationReason('');
       } else {
          setModalMode('booked');
+         setCancelReason('');
          setPaymentForm({
             serviceSalesId: 0,
             serviceSalesName: '',
@@ -170,25 +183,27 @@ export default function RoomBooking() {
     if (!selectedRoom) return;
 
     createBookingMutation.mutate({
-      roomNo: selectedRoom.roomNo,
-      bookingDate: selectedDate,
+      // roomNo: selectedRoom.roomNo, // API might not need this if roomId is provided
+      reserveDate: selectedDate, // Changed from bookingDate to reserveDate
       memberId: bookingForm.customerId,
       salesId: bookingForm.salesId,
-      storeId: selectedStoreId!, // Add storeId
-      // other fields
-    });
+      storeId: selectedStoreId!,
+      roomId: selectedRoom.roomId, 
+      staffId: 1, // TODO: current staff
+      guestCount: 1,
+      remark: '',
+    } as any); 
   };
-
+  
   const handleOpenPayment = () => setModalMode('payment');
 
   const handleCancel = () => {
-    if (!selectedBooking?.reservationId) return; // Assuming reservationId exists in booking resp
+    if (!selectedBooking?.reservationId) return;
 
-    updateBookingMutation.mutate({
+    cancelBookingMutation.mutate({
       id: selectedBooking.reservationId,
-      data: {
-        // status: 'CANCELLED'
-      } as any
+      staffId: 1, // TODO: Get current staff ID
+      reason: cancelReason || '用户取消',
     });
   };
 
@@ -236,17 +251,34 @@ export default function RoomBooking() {
   return (
     <div className="space-y-4">
       {/* Shop Filter */}
-      <div className="flex gap-2">
-        {stores.map((store) => (
-          <Button
-            key={store.id}
-            variant={selectedStoreId === store.id ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => store.id && setSelectedStoreId(store.id)}
-          >
-            {store.name}
-          </Button>
-        ))}
+      <div className="flex justify-between items-center">
+        <div className="flex gap-2">
+          {stores.map((store) => (
+            <Button
+              key={store.id}
+              variant={selectedStoreId === store.id ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => store.id && setSelectedStoreId(store.id)}
+            >
+              {store.name}
+            </Button>
+          ))}
+        </div>
+        
+        {/* Date Navigation */}
+        <div className="flex items-center gap-2">
+           <Button variant="outline" size="sm" onClick={() => setCurrentStartDate(d => subDays(d, 7))}>
+             <ChevronLeft className="h-4 w-4 mr-1" />
+             上一周
+           </Button>
+           <span className="text-sm font-medium w-24 text-center">
+             {format(currentStartDate, 'MM/dd')}
+           </span>
+           <Button variant="outline" size="sm" onClick={() => setCurrentStartDate(d => addDays(d, 7))}>
+             下一周
+             <ChevronRight className="h-4 w-4 ml-1" />
+           </Button>
+        </div>
       </div>
 
       {/* Room Grid */}
@@ -285,9 +317,7 @@ export default function RoomBooking() {
                   </td>
                   {dateColumns.map((date) => {
                     const booking = room.bookings?.[date];
-                    // booking is RoomScheduleBookingResp
-                    // It should have status. If null, it's available.
-                    const status = booking ? (booking.status || 'APPROVED') : undefined; // Default to approved if exists but no status? Or use booking.status
+                    const status = booking ? (booking.status || 'APPROVED') : undefined;
 
                     return (
                       <td key={date} className="px-3 py-2 text-center">
@@ -384,7 +414,7 @@ export default function RoomBooking() {
                         ...prev,
                         customerName: '',
                         customerId: 0,
-                      }));
+                        }));
                     }}
                     onFocus={() => {
                       if (customerSearch.trim()) setShowCustomerDropdown(true);
@@ -453,7 +483,10 @@ export default function RoomBooking() {
               </div>
 
               <div className="flex justify-end">
-                <Button onClick={handleBook}>预定</Button>
+                <Button onClick={handleBook} disabled={createBookingMutation.isPending}>
+                  {createBookingMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {createBookingMutation.isPending ? '预定中...' : '预定'}
+                </Button>
               </div>
             </div>
           )}
@@ -477,11 +510,22 @@ export default function RoomBooking() {
               <div className="grid grid-cols-2 gap-4 text-sm">
                  <div>房号: {selectedRoom.roomNo}</div>
                  <div>客户: {selectedBooking.memberName}</div>
-                 {/* Display more info if available in RoomScheduleBookingResp */}
               </div>
+              
+              <div className="space-y-2">
+                <label className="text-sm font-medium">取消原因</label>
+                <input
+                  className="w-full px-3 py-2 border border-border rounded-md text-sm"
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  placeholder="如需取消，请填写原因"
+                />
+              </div>
+
               <div className="flex justify-end gap-3">
-                <Button variant="destructive" onClick={handleCancel}>
-                  取消预定
+                <Button variant="destructive" onClick={handleCancel} disabled={cancelBookingMutation.isPending}>
+                   {cancelBookingMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                   {cancelBookingMutation.isPending ? '取消中...' : '取消预定'}
                 </Button>
                 <Button onClick={handleOpenPayment}>已到店支付</Button>
               </div>

@@ -27,6 +27,17 @@ const buildQuery = (query?: Record<string, unknown>) => {
   return s ? `?${s}` : '';
 };
 
+// Loading state dispatcher
+let loadingCount = 0;
+const dispatchLoading = (isLoading: boolean) => {
+  if (isLoading) {
+    loadingCount++;
+  } else {
+    loadingCount = Math.max(0, loadingCount - 1);
+  }
+  window.dispatchEvent(new CustomEvent('app-loading', { detail: loadingCount > 0 }));
+};
+
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const method = options.method || 'GET';
   const query = buildQuery(options.query);
@@ -41,24 +52,39 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   const token = getAuthToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch(url, {
-    method,
-    headers,
-    body: options.body ? JSON.stringify(options.body) : undefined,
-  });
+  dispatchLoading(true);
 
-  const contentType = res.headers.get('content-type') || '';
-  let payload: unknown = null;
-  if (contentType.includes('application/json')) {
-    payload = await res.json();
-  } else {
-    payload = await res.text();
+  try {
+    const res = await fetch(url, {
+      method,
+      headers,
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    });
+
+    if (res.status === 401) {
+      clearAuthToken();
+      // Only redirect if not already on login page to avoid infinite loops if login itself 401s (though unlikely for login endpoint)
+      if (!window.location.pathname.includes('/login')) {
+        window.location.href = '/login';
+      }
+      throw new Error('Unauthorized');
+    }
+
+    const contentType = res.headers.get('content-type') || '';
+    let payload: unknown = null;
+    if (contentType.includes('application/json')) {
+      payload = await res.json();
+    } else {
+      payload = await res.text();
+    }
+
+    if (!res.ok) {
+      const errObj = typeof payload === 'object' && payload ? (payload as { message?: string }) : { message: String(payload) };
+      throw Object.assign(new Error(errObj.message || 'Request failed'), { status: res.status, payload });
+    }
+
+    return payload as T;
+  } finally {
+    dispatchLoading(false);
   }
-
-  if (!res.ok) {
-    const errObj = typeof payload === 'object' && payload ? (payload as { message?: string }) : { message: String(payload) };
-    throw Object.assign(new Error(errObj.message || 'Request failed'), { status: res.status, payload });
-  }
-
-  return payload as T;
 }

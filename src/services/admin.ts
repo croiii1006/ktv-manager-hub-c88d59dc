@@ -19,6 +19,7 @@ import type {
   PageResultRoomResp,
   ReservationResp,
   ReservationCreateReq,
+  ReservationCancelReq,
   PageResultReservationResp,
   RoomScheduleResp,
 } from '@/models';
@@ -65,7 +66,7 @@ export const MembersApi = {
   create: (body: MemberReq) => request<ApiResult<MemberResp>>(`${ADMIN}/members`, { method: 'POST', body }),
   update: (id: number, body: MemberReq) => request<ApiResult<MemberResp>>(`${ADMIN}/members/${id}`, { method: 'PUT', body }),
   remove: (id: number) => request<ApiResult<void>>(`${ADMIN}/members/${id}`, { method: 'DELETE' }),
-  recharge: (id: number, body: RechargeApplyCreateReq) => request<ApiResult<void>>(`${ADMIN}/members/${id}/recharge`, { method: 'POST', body }),
+  recharge: (id: number, body: RechargeApplyCreateReq) => request<ApiResult<void>>(`${ADMIN}/recharge-applies`, { method: 'POST', body }),
 };
 
 export const RechargesApi = {
@@ -90,6 +91,7 @@ export const BookingsApi = {
     request<ApiResult<PageResultReservationResp>>(`${ADMIN}/reservations`, { method: 'GET', query }),
   create: (body: ReservationCreateReq) => request<ApiResult<ReservationResp>>(`${ADMIN}/reservations`, { method: 'POST', body }),
   update: (id: number, body: ReservationCreateReq) => request<ApiResult<ReservationResp>>(`${ADMIN}/reservations/${id}`, { method: 'PUT', body }),
+  cancel: (id: number, body: ReservationCancelReq) => request<ApiResult<void>>(`${ADMIN}/reservations/${id}/cancel`, { method: 'POST', body }),
 };
 
 export const RoomSchedulesApi = {

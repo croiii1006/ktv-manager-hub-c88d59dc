@@ -1,13 +1,13 @@
-import { ReactNode } from 'react';
+import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 
-interface LayoutProps {
-  children: ReactNode;
-  currentPage: string;
-  onPageChange: (page: string) => void;
-}
+export default function Layout() {
+  const location = useLocation();
+  
+  // Extract the last part of the path to determine the title
+  // e.g. /dashboard/team-leaders -> team-leaders
+  const currentPath = location.pathname.split('/').pop() || '';
 
-export default function Layout({ children, currentPage, onPageChange }: LayoutProps) {
   const pageTitles: Record<string, string> = {
     'team-leaders': '队长管理',
     'salespersons': '业务员管理',
@@ -19,15 +19,15 @@ export default function Layout({ children, currentPage, onPageChange }: LayoutPr
 
   return (
     <div className="flex min-h-screen w-full bg-background">
-      <Sidebar currentPage={currentPage} onPageChange={onPageChange} />
+      <Sidebar />
       <main className="flex-1 ml-56">
         <header className="sticky top-0 z-10 bg-card border-b border-border px-6 py-4">
           <h1 className="text-xl font-semibold text-foreground">
-            {pageTitles[currentPage] || '管理系统'}
+            {pageTitles[currentPath] || '管理系统'}
           </h1>
         </header>
         <div className="p-6">
-          {children}
+          <Outlet />
         </div>
       </main>
     </div>
