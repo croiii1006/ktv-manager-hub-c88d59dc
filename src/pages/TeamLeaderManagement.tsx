@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Plus, Edit2, Trash2, KeyRound, Power, Eye, Loader2 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { TeamLeadersApi } from '@/services/admin';
+import { TeamLeadersApi, StoresApi } from '@/services/admin';
 import { StaffCreateReq, StaffUpdateReq, StaffRespRoleEnum, StaffResp } from '@/models';
 import ShopSelect from '@/components/ShopSelect';
 import { Button } from '@/components/ui/button';
@@ -57,6 +57,13 @@ export default function TeamLeaderManagement() {
     queryKey: ['team-leaders', page, size],
     queryFn: () => TeamLeadersApi.list({ page, size }),
   });
+
+  const { data: storesResp } = useQuery({
+    queryKey: ['stores'],
+    queryFn: () => StoresApi.list({ page: 1, size: 100 }),
+  });
+
+  const storeMap = new Map(storesResp?.data?.list?.map((s) => [s.id, s.name]) || []);
 
   const teamLeaders = leadersResp?.data?.list || [];
   const total = leadersResp?.data?.total || 0;
@@ -195,7 +202,7 @@ export default function TeamLeaderManagement() {
                   <td className="px-4 py-3 text-sm">{leader.username}</td>
                   <td className="px-4 py-3 text-sm">{leader.name}</td>
                   <td className="px-4 py-3 text-sm">{leader.phone}</td>
-                  <td className="px-4 py-3 text-sm">{leader.storeId}</td>
+                  <td className="px-4 py-3 text-sm">{leader.storeId ? storeMap.get(leader.storeId) || leader.storeId : '-'}</td>
                   <td className="px-4 py-3 text-sm">{leader.wechat}</td>
                   <td className="px-4 py-3 text-sm">
                     <Badge variant={leader.status === 1 ? 'default' : 'secondary'}>
@@ -448,7 +455,7 @@ export default function TeamLeaderManagement() {
                 <div><span className="text-muted-foreground">姓名:</span> {selectedLeader.name}</div>
                 <div><span className="text-muted-foreground">电话:</span> {selectedLeader.phone}</div>
                 <div><span className="text-muted-foreground">微信号:</span> {selectedLeader.wechat}</div>
-                <div><span className="text-muted-foreground">店铺ID:</span> {selectedLeader.storeId}</div>
+                <div><span className="text-muted-foreground">店铺:</span> {selectedLeader.storeId ? storeMap.get(selectedLeader.storeId) || selectedLeader.storeId : '-'}</div>
                 <div>
                    <span className="text-muted-foreground">状态:</span> 
                    <span className={selectedLeader.status === 1 ? 'text-green-600 ml-1' : 'text-gray-500 ml-1'}>

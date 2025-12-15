@@ -22,6 +22,9 @@ import type {
   ReservationCancelReq,
   PageResultReservationResp,
   RoomScheduleResp,
+  MemberBindingReq,
+  MemberBindingResp,
+  PageResultMemberBindingResp,
 } from '@/models';
 
 const ADMIN = '/api/admin';
@@ -97,6 +100,15 @@ export const BookingsApi = {
 export const RoomSchedulesApi = {
   list: (query: { storeId: number; startDate: string; endDate: string }) =>
     request<ApiResult<RoomScheduleResp>>(`${ADMIN}/room-schedules`, { method: 'GET', query }),
+};
+
+export const MemberBindingsApi = {
+  list: (query?: { page?: number; size?: number; memberId?: number; storeId?: number; staffId?: number }) =>
+    request<ApiResult<PageResultMemberBindingResp>>(`${ADMIN}/member-bindings`, { method: 'GET', query }),
+  detail: (id: number) => request<ApiResult<MemberBindingResp>>(`${ADMIN}/member-bindings/${id}`, { method: 'GET' }),
+  create: (body: MemberBindingReq) => request<ApiResult<MemberBindingResp>>(`${ADMIN}/member-bindings`, { method: 'POST', body }),
+  update: (id: number, body: MemberBindingReq) => request<ApiResult<MemberBindingResp>>(`${ADMIN}/member-bindings/${id}`, { method: 'PUT', body }),
+  remove: (id: number) => request<ApiResult<void>>(`${ADMIN}/member-bindings/${id}`, { method: 'DELETE' }),
 };
 
 export const AuthApi = {

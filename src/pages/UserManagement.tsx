@@ -1,12 +1,14 @@
 import { useState } from 'react';
-import { Plus, Upload, Trash2, Loader2 } from 'lucide-react';
+import { Plus, Edit2, Trash2, Eye, Loader2, UserCog, Wallet, ReceiptText } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MembersApi, RechargesApi, ConsumesApi } from '@/services/admin';
-import { MemberResp, MemberReq, CARD_TYPES_ENUM, RechargeApplyCreateReq } from '@/models';
+import { MembersApi, RechargesApi, ConsumesApi, SalespersonsApi, MemberBindingsApi } from '@/services/admin';
+import { MemberResp, MemberReq, RechargeApplyCreateReq, MemberBindingReq } from '@/models';
 import SalesSelect from '@/components/SalesSelect';
-import ShopSelect from '@/components/ShopSelect';
 import { CARD_TYPES, CARD_TYPE_THRESHOLDS } from '@/types';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Upload } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -27,36 +29,54 @@ import { toast } from 'sonner';
 export default function UserManagement() {
   const queryClient = useQueryClient();
   const [selectedMember, setSelectedMember] = useState<MemberResp | null>(null);
-  const [showRechargeModal, setShowRechargeModal] = useState(false);
   const [actionLoading, setActionLoading] = useState<number | null>(null);
-
-  const [rechargeForm, setRechargeForm] = useState({
-    amount: '',
-    giftAmount: '',
-    voucher: '',
-    giftProductRemark: '',
-    shop: undefined as number | undefined,
-  });
+  
+  // Modals
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [rechargeModalOpen, setRechargeModalOpen] = useState(false);
+  const [bindModalOpen, setBindModalOpen] = useState(false);
 
   // Pagination
   const [page, setPage] = useState(1);
   const [size] = useState(10);
 
-  // Create Modal
-  const [createModalOpen, setCreateModalOpen] = useState(false);
+  // Forms
   const [newMember, setNewMember] = useState<MemberReq>({
     name: '',
     phone: '',
-    cardType: 'ORDINARY' as any, // Default
+    cardType: 'ORDINARY' as any,
     idCard: '',
     salesId: undefined,
   });
 
+  const [editForm, setEditForm] = useState<MemberReq>({});
+  
+  const [rechargeForm, setRechargeForm] = useState({
+    amount: '',
+    giftAmount: '',
+    voucher: '',
+    giftProductRemark: '',
+    shop: 1, 
+  });
+
+  const [bindForm, setBindForm] = useState<{ salesId?: number; salesName?: string }>({});
+
   // Fetch members
-  const { data: membersResp } = useQuery({
+  const { data: membersResp, isLoading } = useQuery({
     queryKey: ['members', page, size],
     queryFn: () => MembersApi.list({ page, size }),
   });
+
+  // Fetch salespersons for name mapping
+  const { data: salesResp } = useQuery({
+    queryKey: ['salespersons-all'],
+    queryFn: () => SalespersonsApi.list({ page: 1, size: 100 }),
+  });
+
+  const salespersons = salesResp?.data?.list || [];
+  const salesMap = new Map(salespersons.map((s) => [s.id, s.name]));
 
   const members = membersResp?.data?.list || [];
   const total = membersResp?.data?.total || 0;
@@ -86,8 +106,10 @@ export default function UserManagement() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['members'] });
       toast.success('更新成功');
+      setEditModalOpen(false);
     },
     onError: () => toast.error('更新失败'),
+    onSettled: () => setActionLoading(null),
   });
 
   const deleteMutation = useMutation({
@@ -107,15 +129,48 @@ export default function UserManagement() {
       queryClient.invalidateQueries({ queryKey: ['members'] });
       queryClient.invalidateQueries({ queryKey: ['recharges'] });
       toast.success('充值申请提交成功');
-      setShowRechargeModal(false);
+      setRechargeModalOpen(false);
     },
     onError: (error: any) => {
-      // Assuming error.payload.message contains the server message
       const msg = error.message || '充值申请提交失败';
       toast.error(msg);
     },
   });
 
+  const bindMutation = useMutation({
+    mutationFn: async ({ memberId, salesId }: { memberId: number; salesId: number }) => {
+       // First check if binding exists
+       const bindings = await MemberBindingsApi.list({ memberId, page: 1, size: 1 });
+       const existingBinding = bindings.data?.list?.[0];
+
+       const req: MemberBindingReq = {
+          memberId,
+          storeId: 1, // Default store or should fetch from salesman? Assuming 1 or handled by backend if omitted (but required in interface)
+          staffId: salesId,
+       };
+       // Try to find the store of the salesman
+       const sales = salespersons.find(s => s.id === salesId);
+       if (sales && sales.storeId) {
+          req.storeId = sales.storeId;
+       }
+
+       if (existingBinding && existingBinding.id) {
+          return MemberBindingsApi.update(existingBinding.id, req);
+       } else {
+          return MemberBindingsApi.create(req);
+       }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['members'] });
+      toast.success('绑定成功');
+      setBindModalOpen(false);
+    },
+    onError: (err: any) => {
+       toast.error(err.message || '绑定失败');
+    }
+  });
+
+  // Handlers
   const handleDelete = (id: number) => {
     if (confirm('确定要删除这个会员吗？')) {
       setActionLoading(id);
@@ -123,49 +178,70 @@ export default function UserManagement() {
     }
   };
 
-  const handleUpdateMember = (
-    memberId: number,
-    field: keyof MemberReq,
-    value: any
-  ) => {
-    updateMutation.mutate({ id: memberId, data: { [field]: value } });
+  const openEdit = (member: MemberResp) => {
+    setSelectedMember(member);
+    setEditForm({
+      name: member.name,
+      phone: member.phone,
+      cardType: member.cardType as any, // Assuming string matches
+      idCard: member.idCard,
+      salesId: member.salesId,
+    });
+    setEditModalOpen(true);
   };
 
-  const handleSalesChange = (
-    memberId: number,
-    salesId: number,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _salesName: string
-  ) => {
-    updateMutation.mutate({ id: memberId, data: { salesId } });
+  const openBind = (member: MemberResp) => {
+    setSelectedMember(member);
+    setBindForm({ salesId: member.salesId });
+    setBindModalOpen(true);
   };
 
-  // Fetch details for selected member
-  const { data: rechargeResp } = useQuery({
-    queryKey: ['recharges', selectedMember?.id],
-    queryFn: () => RechargesApi.list({ memberId: String(selectedMember?.id), page: 1, size: 20 }),
-    enabled: !!selectedMember && !showRechargeModal, // Fetch when detail modal is open
-  });
-
-  const { data: consumeResp } = useQuery({
-    queryKey: ['consumes', selectedMember?.id],
-    queryFn: () => ConsumesApi.list({ memberId: String(selectedMember?.id), page: 1, size: 20 }),
-    enabled: !!selectedMember && !showRechargeModal,
-  });
-
-  const memberRechargeRecords = rechargeResp?.data?.list || [];
-  const memberConsumeRecords = consumeResp?.data?.list || [];
-
-  const handleOpenRecharge = () => {
-    if (!selectedMember) return;
+  const openRecharge = (member: MemberResp) => {
+    setSelectedMember(member);
     setRechargeForm({
       amount: '',
       giftAmount: '',
       voucher: '',
       giftProductRemark: '',
-      shop: 1, // Default to store 1 as requested ("use user's own shop ID"), or we can fetch it. For now hardcode/auto-fill.
+      shop: 1,
     });
-    setShowRechargeModal(true);
+    setRechargeModalOpen(true);
+  };
+
+  const handleEditSubmit = () => {
+    if (selectedMember?.id) {
+      updateMutation.mutate({ id: selectedMember.id, data: editForm });
+    }
+  };
+
+  const handleBindSubmit = () => {
+    if (selectedMember?.id && bindForm.salesId) {
+       bindMutation.mutate({ memberId: selectedMember.id, salesId: bindForm.salesId });
+    }
+  };
+
+  const handleRechargeSubmit = () => {
+    if (!selectedMember?.id) return;
+    const amount = parseFloat(rechargeForm.amount) || 0;
+    const giftAmount = parseFloat(rechargeForm.giftAmount) || 0;
+    
+    if (amount <= 0) {
+      toast.error('请输入有效的充值金额');
+      return;
+    }
+
+    rechargeMutation.mutate({
+      id: selectedMember.id,
+      data: {
+        memberId: selectedMember.id,
+        amount,
+        giftAmount,
+        storeId: rechargeForm.shop,
+        remark: rechargeForm.giftProductRemark,
+        voucherUrls: rechargeForm.voucher ? [rechargeForm.voucher] : [],
+        staffId: 1, // TODO: current user
+      } as any,
+    });
   };
 
   const handleVoucherUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -182,190 +258,112 @@ export default function UserManagement() {
     }
   };
 
-  const handleRechargeSubmit = () => {
-    if (!selectedMember?.id) return;
-    
-    const amount = parseFloat(rechargeForm.amount) || 0;
-    const giftAmount = parseFloat(rechargeForm.giftAmount) || 0;
-    
-    if (amount <= 0) {
-      toast.error('请输入有效的充值金额');
-      return;
-    }
+  // Detail queries
+  const { data: rechargeRecordsResp } = useQuery({
+    queryKey: ['recharges', selectedMember?.id],
+    queryFn: () => RechargesApi.list({ memberId: String(selectedMember?.id), page: 1, size: 20 }),
+    enabled: !!selectedMember && detailModalOpen,
+  });
 
-    if (!rechargeForm.shop) {
-        toast.error('店铺信息缺失'); // Should not happen with default
-        return;
-    }
+  const { data: consumeRecordsResp } = useQuery({
+    queryKey: ['consumes', selectedMember?.id],
+    queryFn: () => ConsumesApi.list({ memberId: String(selectedMember?.id), page: 1, size: 20 }),
+    enabled: !!selectedMember && detailModalOpen,
+  });
 
-    rechargeMutation.mutate({
-      id: selectedMember.id,
-      data: {
-        memberId: selectedMember.id, // Explicitly add memberId as per RechargeApplyCreateReq
-        amount,
-        giftAmount,
-        storeId: rechargeForm.shop,
-        remark: rechargeForm.giftProductRemark,
-        // paymentVoucher: rechargeForm.voucher, // The interface uses voucherUrls: string[]
-        voucherUrls: rechargeForm.voucher ? [rechargeForm.voucher] : [],
-        staffId: 1, // Current operator ID. TODO: Get from auth context
-      } as any,
-    });
-  };
+  const memberRechargeRecords = rechargeRecordsResp?.data?.list || [];
+  const memberConsumeRecords = consumeRecordsResp?.data?.list || [];
 
   return (
     <div className="space-y-4">
+      <div className="flex justify-end">
+         <Button onClick={() => setCreateModalOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            添加会员
+         </Button>
+      </div>
+
       <div className="bg-card rounded-lg border border-border overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-muted/50 border-b border-border">
-                <th className="px-3 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap">
-                  会员卡号
-                </th>
-                <th className="px-3 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap">
-                  姓名
-                </th>
-                <th className="px-3 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap">
-                  手机号码
-                </th>
-                <th className="px-3 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap">
-                  卡类型
-                </th>
-                <th className="px-3 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap">
-                  身份证号
-                </th>
-                <th className="px-3 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap">
-                  办理日期
-                </th>
-                <th className="px-3 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap">
-                  充值余额
-                </th>
-                <th className="px-3 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap">
-                  赠送余额
-                </th>
-                <th className="px-3 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap">
-                  业务员
-                </th>
-                <th className="px-3 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap">
-                  操作
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {members.map((member) => (
+        <table className="w-full">
+          <thead>
+            <tr className="bg-muted/50 border-b border-border">
+              <th className="px-3 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap">编号</th>
+              <th className="px-3 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap">姓名</th>
+              <th className="px-3 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap">手机号码</th>
+              <th className="px-3 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap">卡类型</th>
+              <th className="px-3 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap">身份证号</th>
+              <th className="px-3 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap">办理日期</th>
+              <th className="px-3 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap">充值余额</th>
+              <th className="px-3 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap">赠送余额</th>
+              <th className="px-3 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap">业务员</th>
+              <th className="px-3 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading ? (
+              Array.from({ length: 5 }).map((_, i) => (
+                <tr key={i} className="border-b border-border">
+                  <td colSpan={10} className="p-4">
+                    <Skeleton className="h-8 w-full" />
+                  </td>
+                </tr>
+              ))
+            ) : members.length === 0 ? (
+               <tr>
+                  <td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">暂无数据</td>
+               </tr>
+            ) : (
+              members.map((member) => (
                 <tr
                   key={member.id}
                   className="border-b border-border hover:bg-muted/30 transition-colors"
                 >
-                  <td className="px-3 py-2 text-sm font-mono text-foreground whitespace-nowrap">
-                    {member.id}
+                  <td className="px-3 py-3 text-sm font-mono text-foreground">{member.id}</td>
+                  <td className="px-3 py-3 text-sm">{member.name}</td>
+                  <td className="px-3 py-3 text-sm">{member.phone}</td>
+                  <td className="px-3 py-3 text-sm">{member.cardType}</td>
+                  <td className="px-3 py-3 text-sm">{member.idCard || '-'}</td>
+                  <td className="px-3 py-3 text-sm">{member.createdAt?.split('T')[0]}</td>
+                  <td className="px-3 py-3 text-sm font-medium text-green-600">¥{(member.balance || 0).toLocaleString()}</td>
+                  <td className="px-3 py-3 text-sm font-medium text-blue-600">¥{(member.giftBalance || 0).toLocaleString()}</td>
+                  <td className="px-3 py-3 text-sm">
+                    {member.salesName || (member.salesId ? salesMap.get(member.salesId) || member.salesId : '-')}
                   </td>
-                  <td className="px-3 py-2">
-                    <input
-                      type="text"
-                      defaultValue={member.name}
-                      onBlur={(e) =>
-                        member.id && handleUpdateMember(member.id, 'name', e.target.value)
-                      }
-                      className="w-20 px-2 py-1 text-sm border border-border rounded bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-                      placeholder="姓名"
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <input
-                      type="text"
-                      defaultValue={member.phone}
-                      onBlur={(e) =>
-                        member.id && handleUpdateMember(member.id, 'phone', e.target.value)
-                      }
-                      className="w-28 px-2 py-1 text-sm border border-border rounded bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-                      placeholder="手机号"
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <select
-                      value={member.cardType}
-                      onChange={(e) =>
-                        member.id && handleUpdateMember(member.id, 'cardType', e.target.value)
-                      }
-                      className="w-24 px-2 py-1 text-sm border border-border rounded bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-                    >
-                      {CARD_TYPES.map((type) => (
-                        <option key={type} value={type}>
-                          {type}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-3 py-2">
-                    <input
-                      type="text"
-                      defaultValue={member.idCard}
-                      onBlur={(e) =>
-                        member.id && handleUpdateMember(member.id, 'idCard', e.target.value)
-                      }
-                      className="w-44 px-2 py-1 text-sm border border-border rounded bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-                      placeholder="身份证号"
-                    />
-                  </td>
-                  <td className="px-3 py-2 text-sm whitespace-nowrap">
-                    {member.createdAt?.split('T')[0]}
-                  </td>
-                  <td className="px-3 py-2 text-sm font-medium text-green-600 whitespace-nowrap">
-                    ¥{(member.balance || 0).toLocaleString()}
-                  </td>
-                  <td className="px-3 py-2 text-sm font-medium text-blue-600 whitespace-nowrap">
-                    ¥{(member.giftBalance || 0).toLocaleString()}
-                  </td>
-                  <td className="px-3 py-2 min-w-[180px]">
-                    <SalesSelect
-                      value={member.salesId}
-                      onChange={(salesId, salesName) =>
-                        member.id && handleSalesChange(member.id, salesId, salesName)
-                      }
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setSelectedMember(member)}
-                      >
-                        详情
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => member.id && handleDelete(member.id)}
-                        disabled={actionLoading === member.id}
-                      >
-                        {actionLoading === member.id ? (
-                           <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                           <Trash2 className="h-4 w-4" />
-                        )}
-                      </Button>
+                  <td className="px-3 py-3">
+                    <div className="flex gap-1 flex-wrap">
+                      <Button variant="ghost" size="icon" title="详情" onClick={() => { setSelectedMember(member); setDetailModalOpen(true); }}>
+                          <Eye className="h-4 w-4" />
+                       </Button>
+                       <Button variant="ghost" size="icon" title="编辑" onClick={() => openEdit(member)}>
+                          <Edit2 className="h-4 w-4" />
+                       </Button>
+                       <Button variant="ghost" size="icon" title="绑定业务员" onClick={() => openBind(member)}>
+                          <UserCog className="h-4 w-4" />
+                       </Button>
+                       <Button variant="ghost" size="icon" title="充值" onClick={() => openRecharge(member)}>
+                          <Wallet className="h-4 w-4 text-green-600" />
+                       </Button>
+                       <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          title="删除" 
+                          className="text-destructive hover:text-destructive" 
+                          onClick={() => member.id && handleDelete(member.id)}
+                          disabled={actionLoading === member.id}
+                       >
+                          {actionLoading === member.id ? (
+                             <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                             <Trash2 className="h-4 w-4" />
+                          )}
+                       </Button>
                     </div>
                   </td>
                 </tr>
-              ))}
-              <tr className="hover:bg-muted/30 transition-colors">
-                <td className="px-3 py-3" colSpan={10}>
-                  <button
-                    onClick={() => setCreateModalOpen(true)}
-                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary hover:bg-accent rounded-md transition-colors"
-                  >
-                    <Plus className="h-4 w-4" />
-                    添加用户
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
 
       {/* Pagination */}
@@ -467,10 +465,210 @@ export default function UserManagement() {
         </DialogContent>
       </Dialog>
 
+      {/* Edit Modal */}
+      <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>编辑会员</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+             <div className="space-y-2">
+              <label className="text-sm font-medium">姓名</label>
+              <input
+                className="w-full px-3 py-2 border border-border rounded-md text-sm"
+                value={editForm.name || ''}
+                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">手机号码</label>
+              <input
+                className="w-full px-3 py-2 border border-border rounded-md text-sm"
+                value={editForm.phone || ''}
+                onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">卡类型</label>
+              <select
+                className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background"
+                value={editForm.cardType}
+                onChange={(e) => setEditForm({ ...editForm, cardType: e.target.value as any })}
+              >
+                {CARD_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">身份证号</label>
+              <input
+                className="w-full px-3 py-2 border border-border rounded-md text-sm"
+                value={editForm.idCard || ''}
+                onChange={(e) => setEditForm({ ...editForm, idCard: e.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditModalOpen(false)}>取消</Button>
+            <Button onClick={handleEditSubmit} disabled={updateMutation.isPending}>
+               {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+               {updateMutation.isPending ? '保存中...' : '保存修改'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bind Salesman Modal */}
+      <Dialog open={bindModalOpen} onOpenChange={setBindModalOpen}>
+         <DialogContent>
+            <DialogHeader>
+               <DialogTitle>绑定业务员 - {selectedMember?.name}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+               <div className="space-y-2">
+                  <label className="text-sm font-medium">选择业务员</label>
+                  <SalesSelect
+                     value={bindForm.salesId}
+                     onChange={(id) => setBindForm({ ...bindForm, salesId: id })}
+                  />
+               </div>
+            </div>
+            <DialogFooter>
+               <Button variant="outline" onClick={() => setBindModalOpen(false)}>取消</Button>
+               <Button onClick={handleBindSubmit} disabled={bindMutation.isPending}>
+                  {bindMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {bindMutation.isPending ? '绑定中...' : '确认绑定'}
+               </Button>
+            </DialogFooter>
+         </DialogContent>
+      </Dialog>
+
+      {/* Recharge Modal */}
+      <Dialog open={rechargeModalOpen} onOpenChange={setRechargeModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              充值 - {selectedMember?.id} {selectedMember?.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="bg-muted/30 p-4 rounded-md text-sm">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <span className="text-muted-foreground">当前充值余额：</span>
+                  <span className="font-medium text-green-600">
+                    ¥{(selectedMember?.balance || 0).toLocaleString()}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">当前赠送余额：</span>
+                  <span className="font-medium text-blue-600">
+                    ¥{(selectedMember?.giftBalance || 0).toLocaleString()}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">当前卡类型：</span>
+                  <span className="font-medium">{selectedMember?.cardType}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  充值金额 *
+                </label>
+                <input
+                  type="number"
+                  value={rechargeForm.amount}
+                  onChange={(e) =>
+                    setRechargeForm((prev) => ({ ...prev, amount: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                  placeholder="输入充值金额"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  赠送余额
+                </label>
+                <input
+                  type="number"
+                  value={rechargeForm.giftAmount}
+                  onChange={(e) =>
+                    setRechargeForm((prev) => ({ ...prev, giftAmount: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                  placeholder="输入赠送余额"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  赠送产品备注
+                </label>
+                <textarea
+                  value={rechargeForm.giftProductRemark}
+                  onChange={(e) =>
+                    setRechargeForm((prev) => ({
+                      ...prev,
+                      giftProductRemark: e.target.value,
+                    }))
+                  }
+                  className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+                  rows={2}
+                  placeholder="输入赠送产品备注"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  支付凭证
+                </label>
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-2 px-4 py-2 text-sm border border-border rounded-md bg-background cursor-pointer hover:bg-muted transition-colors">
+                    <Upload className="h-4 w-4" />
+                    上传凭证
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleVoucherUpload}
+                      className="hidden"
+                    />
+                  </label>
+                  {rechargeForm.voucher && (
+                    <span className="text-sm text-green-600">已上传</span>
+                  )}
+                </div>
+                {rechargeForm.voucher && (
+                  <img
+                    src={rechargeForm.voucher}
+                    alt="凭证预览"
+                    className="mt-2 max-h-32 rounded-md border border-border"
+                  />
+                )}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setRechargeModalOpen(false)}>
+                取消
+              </Button>
+              <Button onClick={handleRechargeSubmit} disabled={rechargeMutation.isPending}>
+                 {rechargeMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                 {rechargeMutation.isPending ? '充值中...' : '确认充值'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Member Detail Modal */}
       <Dialog
-        open={!!selectedMember && !showRechargeModal}
-        onOpenChange={() => setSelectedMember(null)}
+        open={detailModalOpen}
+        onOpenChange={setDetailModalOpen}
       >
         <DialogContent className="max-w-5xl max-h-[85vh] overflow-auto">
           <DialogHeader>
@@ -479,7 +677,7 @@ export default function UserManagement() {
                 {selectedMember?.id} {selectedMember?.name}
               </span>
               <span className="text-sm font-normal text-muted-foreground">
-                业务员：{selectedMember?.salesId}
+                业务员：{selectedMember?.salesName || (selectedMember?.salesId ? salesMap.get(selectedMember?.salesId) || selectedMember?.salesId : '-')}
               </span>
             </DialogTitle>
           </DialogHeader>
@@ -620,129 +818,7 @@ export default function UserManagement() {
             </div>
 
             <div className="flex justify-end">
-              <Button onClick={handleOpenRecharge}>充值</Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Recharge Modal */}
-      <Dialog
-        open={showRechargeModal}
-        onOpenChange={() => setShowRechargeModal(false)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              充值 - {selectedMember?.id} {selectedMember?.name}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="bg-muted/30 p-4 rounded-md text-sm">
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <span className="text-muted-foreground">当前充值余额：</span>
-                  <span className="font-medium text-green-600">
-                    ¥{(selectedMember?.balance || 0).toLocaleString()}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">当前赠送余额：</span>
-                  <span className="font-medium text-blue-600">
-                    ¥{(selectedMember?.giftBalance || 0).toLocaleString()}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">当前卡类型：</span>
-                  <span className="font-medium">{selectedMember?.cardType}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  充值金额 *
-                </label>
-                <input
-                  type="number"
-                  value={rechargeForm.amount}
-                  onChange={(e) =>
-                    setRechargeForm((prev) => ({ ...prev, amount: e.target.value }))
-                  }
-                  className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-                  placeholder="输入充值金额"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  赠送余额
-                </label>
-                <input
-                  type="number"
-                  value={rechargeForm.giftAmount}
-                  onChange={(e) =>
-                    setRechargeForm((prev) => ({ ...prev, giftAmount: e.target.value }))
-                  }
-                  className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-                  placeholder="输入赠送余额"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  赠送产品备注
-                </label>
-                <textarea
-                  value={rechargeForm.giftProductRemark}
-                  onChange={(e) =>
-                    setRechargeForm((prev) => ({
-                      ...prev,
-                      giftProductRemark: e.target.value,
-                    }))
-                  }
-                  className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring resize-none"
-                  rows={2}
-                  placeholder="输入赠送产品备注"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  支付凭证
-                </label>
-                <div className="flex items-center gap-2">
-                  <label className="flex items-center gap-2 px-4 py-2 text-sm border border-border rounded-md bg-background cursor-pointer hover:bg-muted transition-colors">
-                    <Upload className="h-4 w-4" />
-                    上传凭证
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleVoucherUpload}
-                      className="hidden"
-                    />
-                  </label>
-                  {rechargeForm.voucher && (
-                    <span className="text-sm text-green-600">已上传</span>
-                  )}
-                </div>
-                {rechargeForm.voucher && (
-                  <img
-                    src={rechargeForm.voucher}
-                    alt="凭证预览"
-                    className="mt-2 max-h-32 rounded-md border border-border"
-                  />
-                )}
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-3">
-              <Button variant="outline" onClick={() => setShowRechargeModal(false)}>
-                取消
-              </Button>
-              <Button onClick={handleRechargeSubmit} disabled={rechargeMutation.isPending}>
-                 {rechargeMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                 {rechargeMutation.isPending ? '充值中...' : '确认充值'}
-              </Button>
+              <Button onClick={() => setDetailModalOpen(false)}>关闭</Button>
             </div>
           </div>
         </DialogContent>

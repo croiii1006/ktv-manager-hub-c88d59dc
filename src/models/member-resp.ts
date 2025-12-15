@@ -80,6 +80,18 @@ export interface MemberResp {
      */
     totalConsume?: number;
     /**
+     * 业务员ID
+     * @type {number}
+     * @memberof MemberResp
+     */
+    salesId?: number;
+    /**
+     * 业务员名称
+     * @type {string}
+     * @memberof MemberResp
+     */
+    salesName?: string;
+    /**
      * 状态
      * @type {number}
      * @memberof MemberResp

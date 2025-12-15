@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Plus, Edit2, Trash2, KeyRound, Power, Eye, Loader2 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { SalespersonsApi, RechargesApi, ConsumesApi } from '@/services/admin';
+import { SalespersonsApi, RechargesApi, ConsumesApi, StoresApi, TeamLeadersApi } from '@/services/admin';
 import { StaffResp, StaffCreateReq, StaffUpdateReq, StaffRespRoleEnum } from '@/models';
 import ShopSelect from '@/components/ShopSelect';
 import LeaderSelect from '@/components/LeaderSelect';
@@ -59,6 +59,19 @@ export default function SalespersonManagement() {
     queryKey: ['salespersons', page, size],
     queryFn: () => SalespersonsApi.list({ page, size }),
   });
+
+  const { data: storesResp } = useQuery({
+    queryKey: ['stores'],
+    queryFn: () => StoresApi.list({ page: 1, size: 100 }),
+  });
+
+  const { data: leadersResp } = useQuery({
+    queryKey: ['team-leaders-all'],
+    queryFn: () => TeamLeadersApi.list({ page: 1, size: 100 }),
+  });
+
+  const storeMap = new Map(storesResp?.data?.list?.map((s) => [s.id, s.name]) || []);
+  const leaderMap = new Map(leadersResp?.data?.list?.map((l) => [l.id, l.name]) || []);
 
   const salespersons = salesResp?.data?.list || [];
   const total = salesResp?.data?.total || 0;
@@ -220,8 +233,8 @@ export default function SalespersonManagement() {
                   <td className="px-3 py-3 text-sm">{sp.name}</td>
                   <td className="px-3 py-3 text-sm">{sp.phone}</td>
                   <td className="px-3 py-3 text-sm">{sp.wechat}</td>
-                  <td className="px-3 py-3 text-sm">{sp.storeId}</td>
-                  <td className="px-3 py-3 text-sm">{sp.leaderId}</td>
+                  <td className="px-3 py-3 text-sm">{sp.storeId ? storeMap.get(sp.storeId) || sp.storeId : '-'}</td>
+                  <td className="px-3 py-3 text-sm">{sp.leaderId ? leaderMap.get(sp.leaderId) || sp.leaderId : '-'}</td>
                   <td className="px-3 py-3 text-sm">
                     <Badge variant={sp.status === 1 ? 'default' : 'secondary'}>
                         {sp.status === 1 ? '启用' : '禁用'}
@@ -509,8 +522,8 @@ export default function SalespersonManagement() {
                 <div><span className="text-muted-foreground">姓名:</span> {selectedSales.name}</div>
                 <div><span className="text-muted-foreground">电话:</span> {selectedSales.phone}</div>
                 <div><span className="text-muted-foreground">微信号:</span> {selectedSales.wechat}</div>
-                <div><span className="text-muted-foreground">店铺ID:</span> {selectedSales.storeId}</div>
-                <div><span className="text-muted-foreground">队长ID:</span> {selectedSales.leaderId}</div>
+                <div><span className="text-muted-foreground">店铺:</span> {selectedSales.storeId ? storeMap.get(selectedSales.storeId) || selectedSales.storeId : '-'}</div>
+                <div><span className="text-muted-foreground">队长:</span> {selectedSales.leaderId ? leaderMap.get(selectedSales.leaderId) || selectedSales.leaderId : '-'}</div>
                 <div>
                    <span className="text-muted-foreground">状态:</span> 
                    <span className={selectedSales.status === 1 ? 'text-green-600 ml-1' : 'text-gray-500 ml-1'}>
