@@ -3,10 +3,14 @@ export type ApiResult<T> = {
   message?: string;
   msg?: string;
   success?: boolean;
+  timestamp?: number;
   data?: T;
 };
 
 export type PageResp<T> = {
   total: number;
+  pages?: number;
+  page?: number;
+  size?: number;
   list: T[];
 };

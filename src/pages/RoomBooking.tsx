@@ -12,16 +12,17 @@ import {
 import SalesSelect from '@/components/SalesSelect';
 import { cn } from '@/lib/utils';
 import { Upload } from 'lucide-react';
+import { ReservationsApi } from '@/services/admin';
 
 export default function RoomBooking() {
   const {
     rooms,
     roomBookings,
-    setRoomBookings,
     members,
     salespersons,
-    setConsumeRecords,
     consumeRecords,
+    refreshReservations,
+    refreshConsumeRecords,
   } = useDataStore();
 
   const [selectedBooking, setSelectedBooking] =
@@ -130,25 +131,24 @@ export default function RoomBooking() {
     }
   };
 
-  const handleBook = () => {
+  const handleBook = async () => {
     if (!selectedBooking) return;
 
-    const updatedBooking: RoomBookingType = {
-      ...selectedBooking,
-      status: 'booked',
-      customerName: bookingForm.customerName,
-      customerId: bookingForm.customerId,
-      salesId: bookingForm.salesId,
-      salesName: bookingForm.salesName,
-    };
-
-    setRoomBookings((prev) => {
-      const exists = prev.find((b) => b.id === updatedBooking.id);
-      if (exists) {
-        return prev.map((b) => (b.id === updatedBooking.id ? updatedBooking : b));
-      }
-      return [...prev, updatedBooking];
-    });
+    try {
+      await ReservationsApi.create({
+        roomId: selectedBooking.roomNumber,
+        roomType: selectedBooking.roomType,
+        storeName: selectedBooking.shop,
+        bookingDate: selectedBooking.date,
+        customerName: bookingForm.customerName,
+        customerId: bookingForm.customerId,
+        salesId: bookingForm.salesId,
+        salesName: bookingForm.salesName,
+      });
+      await refreshReservations();
+    } catch (e) {
+      console.error(e);
+    }
 
     setSelectedBooking(null);
     setModalMode(null);
@@ -156,78 +156,37 @@ export default function RoomBooking() {
 
   const handleOpenPayment = () => setModalMode('payment');
 
-  const handleFinish = () => {
+  const handleFinish = async () => {
     if (!selectedBooking) return;
 
-    const updatedBooking: RoomBookingType = {
-      ...selectedBooking,
-      status: 'finished' as const,
-      serviceSalesId: paymentForm.serviceSalesId,
-      serviceSalesName: paymentForm.serviceSalesName,
-      paymentMethod: paymentForm.paymentMethod,
-      paymentVoucher: paymentForm.paymentVoucher,
-      time: paymentForm.time,
-    };
-
-    setRoomBookings((prev) =>
-      prev.map((b) =>
-        b.id === selectedBooking.id ? updatedBooking : b
-      )
-    );
-
-    const member = members.find(
-      (m) => m.memberId === selectedBooking.customerId
-    );
-
-    const newConsumeRecord = {
-      id: `X${Date.now()}`,
-      date: selectedBooking.date,
-      time: paymentForm.time,
-      memberId: selectedBooking.customerId || '',
-      memberName: selectedBooking.customerName || '',
-      cardType: member?.cardType || '非会员',
-      phone: member?.phone || '',
-      idNumber: member?.idNumber || '',
-      amount: -selectedBooking.price,
-      balance: member?.remainingRecharge || 0,
-      giftBalance: member?.remainingGift || 0,
-      salesId: selectedBooking.salesId || '',
-      salesName: selectedBooking.salesName || '',
-      serviceSalesId: paymentForm.serviceSalesId,
-      serviceSalesName: paymentForm.serviceSalesName,
-      shop: selectedBooking.shop,
-      consumeType: '订房',
-      content: `${selectedBooking.roomType}包厢消费`,
-      remark: '',
-      roomNumber: selectedBooking.roomNumber,
-      bookingDate: selectedBooking.date,
-      paymentMethod: paymentForm.paymentMethod,
-      paymentVoucher: paymentForm.paymentVoucher,
-    };
-
-    setConsumeRecords((prev) => [...prev, newConsumeRecord]);
+    try {
+      await ReservationsApi.approve({
+        id: selectedBooking.id,
+        serviceSalesId: paymentForm.serviceSalesId,
+        serviceSalesName: paymentForm.serviceSalesName,
+        paymentMethod: paymentForm.paymentMethod,
+        paymentVoucher: paymentForm.paymentVoucher,
+        time: paymentForm.time,
+      });
+      await refreshReservations();
+      await refreshConsumeRecords();
+    } catch (e) {
+      console.error(e);
+    }
 
     setSelectedBooking(null);
     setModalMode(null);
   };
 
-  const handleCancel = () => {
+  const handleCancel = async () => {
     if (!selectedBooking) return;
 
-    setRoomBookings((prev) =>
-      prev.map((b) =>
-        b.id === selectedBooking.id
-          ? {
-              ...b,
-              status: 'available' as const,
-              customerName: undefined,
-              customerId: undefined,
-              salesId: undefined,
-              salesName: undefined,
-            }
-          : b
-      )
-    );
+    try {
+      await ReservationsApi.cancel({ id: selectedBooking.id });
+      await refreshReservations();
+    } catch (e) {
+      console.error(e);
+    }
 
     setSelectedBooking(null);
     setModalMode(null);

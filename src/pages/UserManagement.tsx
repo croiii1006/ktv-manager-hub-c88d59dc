@@ -12,16 +12,15 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from '@/hooks/use-toast';
+import { MembersApi, RechargeAppliesApi } from '@/services/admin';
 
 export default function UserManagement() {
   const {
     members,
-    setMembers,
-    generateMemberId,
     rechargeRecords,
-    setRechargeRecords,
     consumeRecords,
     salespersons,
+    refreshMembers,
   } = useDataStore();
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [showRechargeModal, setShowRechargeModal] = useState(false);
@@ -33,45 +32,55 @@ export default function UserManagement() {
     shop: '',
   });
 
-  const handleAddMember = () => {
-    const newId = generateMemberId();
-    const newMember: Member = {
-      memberId: newId,
-      name: '',
-      phone: '',
-      cardType: '非会员',
-      idNumber: '',
-      registerDate: new Date().toISOString().split('T')[0],
-      remainingRecharge: 0,
-      remainingGift: 0,
-      salesId: '',
-      salesName: '',
-    };
-    setMembers([...members, newMember]);
+  const handleAddMember = async () => {
+    try {
+      await MembersApi.create({
+        name: '',
+        phone: '',
+        cardType: '非会员',
+        idNumber: '',
+        registerDate: new Date().toISOString().split('T')[0],
+        remainingRecharge: 0,
+        remainingGift: 0,
+        salesId: '',
+        salesName: '',
+      });
+      await refreshMembers();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const handleUpdateMember = (
+  const handleUpdateMember = async (
     memberId: string,
     field: keyof Member,
     value: string | number
   ) => {
-    setMembers(
-      members.map((m) =>
-        m.memberId === memberId ? { ...m, [field]: value } : m
-      )
-    );
+    const idNum = Number(memberId);
+    if (!Number.isNaN(idNum)) {
+      try {
+        await MembersApi.update(idNum, { [field]: value });
+        await refreshMembers();
+      } catch (e) {
+        console.error(e);
+      }
+    }
   };
 
-  const handleSalesChange = (
+  const handleSalesChange = async (
     memberId: string,
     salesId: string,
     salesName: string
   ) => {
-    setMembers(
-      members.map((m) =>
-        m.memberId === memberId ? { ...m, salesId, salesName } : m
-      )
-    );
+    const idNum = Number(memberId);
+    if (!Number.isNaN(idNum)) {
+      try {
+        await MembersApi.update(idNum, { salesId, salesName });
+        await refreshMembers();
+      } catch (e) {
+        console.error(e);
+      }
+    }
   };
 
   const memberRechargeRecords = rechargeRecords.filter(
@@ -115,7 +124,7 @@ export default function UserManagement() {
     }
   };
 
-  const handleRechargeSubmit = () => {
+  const handleRechargeSubmit = async () => {
     if (!selectedMember) return;
     
     const amount = parseFloat(rechargeForm.amount) || 0;
@@ -130,67 +139,24 @@ export default function UserManagement() {
       return;
     }
 
-    const newBalance = selectedMember.remainingRecharge + amount;
-    const newGiftBalance = selectedMember.remainingGift + giftAmount;
-
-    // Calculate new total recharge and card type
-    const totalRecharge = getMemberTotalRecharge(selectedMember.memberId) + amount;
-    const newCardType = calculateCardType(totalRecharge);
-
-    // Create recharge record
-    const newRecord = {
-      id: `R${Date.now()}`,
-      date: new Date().toISOString().split('T')[0],
-      memberId: selectedMember.memberId,
-      memberName: selectedMember.name,
-      cardType: newCardType,
-      phone: selectedMember.phone,
-      idNumber: selectedMember.idNumber,
-      amount,
-      giftAmount,
-      salesId: selectedMember.salesId,
-      salesName: selectedMember.salesName,
-      shop: rechargeForm.shop,
-      remark: rechargeForm.giftProductRemark,
-      balance: newBalance,
-      giftBalance: newGiftBalance,
-      voucher: rechargeForm.voucher,
-      giftProductRemark: rechargeForm.giftProductRemark,
-    };
-
-    setRechargeRecords((prev) => [...prev, newRecord]);
-
-    // Update member balance and card type
-    setMembers((prev) =>
-      prev.map((m) =>
-        m.memberId === selectedMember.memberId
-          ? {
-              ...m,
-              remainingRecharge: newBalance,
-              remainingGift: newGiftBalance,
-              cardType: newCardType,
-            }
-          : m
-      )
-    );
-
-    // Update selected member state
-    setSelectedMember((prev) =>
-      prev
-        ? {
-            ...prev,
-            remainingRecharge: newBalance,
-            remainingGift: newGiftBalance,
-            cardType: newCardType,
-          }
-        : null
-    );
-
-    setShowRechargeModal(false);
-    toast({
-      title: '充值成功',
-      description: `充值 ¥${amount}，赠送 ¥${giftAmount}，当前卡类型：${newCardType}`,
-    });
+    try {
+      const memberIdNum = Number(selectedMember.memberId);
+      const staffIdNum = Number(selectedMember.salesId);
+      await RechargeAppliesApi.create({
+        memberId: Number.isNaN(memberIdNum) ? selectedMember.memberId : memberIdNum,
+        amount,
+        giftAmount,
+        staffId: Number.isNaN(staffIdNum) ? selectedMember.salesId : staffIdNum,
+        storeName: rechargeForm.shop,
+        voucher: rechargeForm.voucher,
+        remark: rechargeForm.giftProductRemark,
+      });
+      setShowRechargeModal(false);
+      toast({ title: '充值申请已提交', description: `充值 ¥${amount}，赠送 ¥${giftAmount}` });
+      return;
+    } catch {
+      toast({ title: '充值申请提交失败', description: '请稍后重试', variant: 'destructive' });
+    }
   };
 
   return (

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import {
   TeamLeader,
   Salesperson,
@@ -11,6 +11,8 @@ import {
   ROOM_TYPES,
 } from '@/types';
 import { format, addDays } from 'date-fns';
+import { StaffsApi, MembersApi, RoomsApi, ConsumeRecordsApi, ReservationsApi, RechargeAppliesApi } from '@/services/admin';
+import type { ApiResult, PageResp } from '@/types/api';
 
 interface DataStoreContextType {
   teamLeaders: TeamLeader[];
@@ -30,6 +32,9 @@ interface DataStoreContextType {
   generateLeaderId: () => string;
   generateSalesId: () => string;
   generateMemberId: () => string;
+  refreshMembers: () => Promise<void>;
+  refreshReservations: () => Promise<void>;
+  refreshConsumeRecords: () => Promise<void>;
 }
 
 const DataStoreContext = createContext<DataStoreContextType | undefined>(undefined);
@@ -130,13 +135,196 @@ const generateInitialBookings = (): RoomBooking[] => {
 };
 
 export function DataStoreProvider({ children }: { children: ReactNode }) {
-  const [teamLeaders, setTeamLeaders] = useState<TeamLeader[]>(initialTeamLeaders);
-  const [salespersons, setSalespersons] = useState<Salesperson[]>(initialSalespersons);
-  const [members, setMembers] = useState<Member[]>(initialMembers);
-  const [rechargeRecords, setRechargeRecords] = useState<RechargeRecord[]>(initialRechargeRecords);
-  const [consumeRecords, setConsumeRecords] = useState<ConsumeRecord[]>(initialConsumeRecords);
-  const [rooms, setRooms] = useState<Room[]>(initialRooms);
-  const [roomBookings, setRoomBookings] = useState<RoomBooking[]>(generateInitialBookings());
+  const [teamLeaders, setTeamLeaders] = useState<TeamLeader[]>([]);
+  const [salespersons, setSalespersons] = useState<Salesperson[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [rechargeRecords, setRechargeRecords] = useState<RechargeRecord[]>([]);
+  const [consumeRecords, setConsumeRecords] = useState<ConsumeRecord[]>([]);
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [roomBookings, setRoomBookings] = useState<RoomBooking[]>([]);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const [leadersRes, salesRes, membersRes, roomsRes, consumesRes] = await Promise.all([
+          StaffsApi.list({ page: 1, size: 100, role: 'TEAM_LEADER' }),
+          StaffsApi.list({ page: 1, size: 100, role: 'SALESMAN' }),
+          MembersApi.list({ page: 1, size: 100 }),
+          RoomsApi.list({ page: 1, size: 100 }),
+          ConsumeRecordsApi.list({ page: 1, size: 200 }),
+        ]);
+
+        const leaders = ((leadersRes as ApiResult<PageResp<any>>).data?.list || []).map((s: any) => ({
+          leaderId: String(s.staffNo || s.id || s.leaderId || ''),
+          name: s.name || '',
+          phone: s.phone || '',
+          shop: s.shop || s.storeName || '',
+          wechat: s.wechat || '',
+        })) as TeamLeader[];
+        if (leaders.length) setTeamLeaders(leaders);
+
+        const sales = ((salesRes as ApiResult<PageResp<any>>).data?.list || []).map((s: any) => ({
+          salesId: String(s.staffNo || s.id || s.salesId || ''),
+          name: s.name || '',
+          phone: s.phone || '',
+          wechat: s.wechat || '',
+          shop: s.shop || s.storeName || '',
+          leaderId: String(s.leaderId || s.leaderStaffNo || ''),
+          leaderName: s.leaderName || '',
+        })) as Salesperson[];
+        if (sales.length) setSalespersons(sales);
+
+        const mems = ((membersRes as ApiResult<PageResp<any>>).data?.list || []).map((m: any) => ({
+          memberId: String(m.memberId || m.id || ''),
+          name: m.name || '',
+          phone: m.phone || '',
+          cardType: m.cardType || '非会员',
+          idNumber: m.idNumber || '',
+          registerDate: m.registerDate || m.createdAt?.slice(0, 10) || format(new Date(), 'yyyy-MM-dd'),
+          remainingRecharge: Number(m.remainingRecharge ?? 0),
+          remainingGift: Number(m.remainingGift ?? 0),
+          salesId: String(m.salesId || ''),
+          salesName: m.salesName || '',
+        })) as Member[];
+        if (mems.length) setMembers(mems);
+
+        const rms = ((roomsRes as ApiResult<PageResp<any>>).data?.list || []).map((r: any) => ({
+          roomNumber: String(r.roomNumber || r.id || ''),
+          roomType: r.roomType || '',
+          shop: r.shop || r.storeName || '',
+          price: Number(r.price ?? 0),
+        })) as Room[];
+        if (rms.length) setRooms(rms);
+
+        const cons = ((consumesRes as ApiResult<PageResp<any>>).data?.list || []).map((c: any) => ({
+          id: String(c.id || ''),
+          date: c.date || c.bookingDate || format(new Date(), 'yyyy-MM-dd'),
+          time: c.time || undefined,
+          memberId: String(c.memberId || ''),
+          memberName: c.memberName || '',
+          cardType: c.cardType || '非会员',
+          phone: c.phone || '',
+          idNumber: c.idNumber || '',
+          amount: Number(c.amount ?? 0),
+          balance: Number(c.balance ?? 0),
+          giftBalance: Number(c.giftBalance ?? 0),
+          salesId: String(c.salesId || ''),
+          salesName: c.salesName || '',
+          serviceSalesId: c.serviceSalesId ? String(c.serviceSalesId) : undefined,
+          serviceSalesName: c.serviceSalesName || undefined,
+          shop: c.shop || c.storeName || '',
+          consumeType: c.consumeType || '订房',
+          content: c.content || '',
+          remark: c.remark || '',
+          roomNumber: c.roomNumber || undefined,
+          bookingDate: c.bookingDate || undefined,
+          paymentMethod: c.paymentMethod || undefined,
+          paymentVoucher: c.paymentVoucher || undefined,
+        })) as ConsumeRecord[];
+        if (cons.length) setConsumeRecords(cons);
+
+        try {
+          const resvRes = await ReservationsApi.list({ page: 1, size: 200 });
+          const resv = ((resvRes as ApiResult<PageResp<any>>).data?.list || []).map((b: any) => ({
+            id: String(b.id || ''),
+            roomNumber: String(b.roomNumber || b.roomId || ''),
+            roomType: b.roomType || '',
+            shop: b.shop || b.storeName || '',
+            date: b.date || b.bookingDate || format(new Date(), 'yyyy-MM-dd'),
+            status: (b.status || 'available') as RoomBooking['status'],
+            customerName: b.customerName || undefined,
+            customerId: b.customerId ? String(b.customerId) : undefined,
+            salesId: b.salesId ? String(b.salesId) : undefined,
+            salesName: b.salesName || undefined,
+            price: Number(b.price ?? 0),
+            time: b.time || undefined,
+            paymentMethod: b.paymentMethod || undefined,
+            paymentVoucher: b.paymentVoucher || undefined,
+            earlyTerminationReason: b.earlyTerminationReason || undefined,
+          })) as RoomBooking[];
+          if (resv.length) setRoomBookings(resv);
+        } catch {}
+      } catch {
+        // silent fallback to initial mock data
+      }
+    };
+    load();
+  }, []);
+
+  const refreshMembers = async () => {
+    try {
+      const membersRes = await MembersApi.list({ page: 1, size: 100 });
+      const mems = ((membersRes as ApiResult<PageResp<any>>).data?.list || []).map((m: any) => ({
+        memberId: String(m.memberId || m.id || ''),
+        name: m.name || '',
+        phone: m.phone || '',
+        cardType: m.cardType || '非会员',
+        idNumber: m.idNumber || '',
+        registerDate: m.registerDate || m.createdAt?.slice(0, 10) || format(new Date(), 'yyyy-MM-dd'),
+        remainingRecharge: Number(m.remainingRecharge ?? 0),
+        remainingGift: Number(m.remainingGift ?? 0),
+        salesId: String(m.salesId || ''),
+        salesName: m.salesName || '',
+      })) as Member[];
+      setMembers(mems);
+    } catch {}
+  };
+
+  const refreshReservations = async () => {
+    try {
+      const resvRes = await ReservationsApi.list({ page: 1, size: 200 });
+      const resv = ((resvRes as ApiResult<PageResp<any>>).data?.list || []).map((b: any) => ({
+        id: String(b.id || ''),
+        roomNumber: String(b.roomNumber || b.roomId || ''),
+        roomType: b.roomType || '',
+        shop: b.shop || b.storeName || '',
+        date: b.date || b.bookingDate || format(new Date(), 'yyyy-MM-dd'),
+        status: (b.status || 'available') as RoomBooking['status'],
+        customerName: b.customerName || undefined,
+        customerId: b.customerId ? String(b.customerId) : undefined,
+        salesId: b.salesId ? String(b.salesId) : undefined,
+        salesName: b.salesName || undefined,
+        price: Number(b.price ?? 0),
+        time: b.time || undefined,
+        paymentMethod: b.paymentMethod || undefined,
+        paymentVoucher: b.paymentVoucher || undefined,
+        earlyTerminationReason: b.earlyTerminationReason || undefined,
+      })) as RoomBooking[];
+      setRoomBookings(resv);
+    } catch {}
+  };
+
+  const refreshConsumeRecords = async () => {
+    try {
+      const consumesRes = await ConsumeRecordsApi.list({ page: 1, size: 200 });
+      const cons = ((consumesRes as ApiResult<PageResp<any>>).data?.list || []).map((c: any) => ({
+        id: String(c.id || ''),
+        date: c.date || c.bookingDate || format(new Date(), 'yyyy-MM-dd'),
+        time: c.time || undefined,
+        memberId: String(c.memberId || ''),
+        memberName: c.memberName || '',
+        cardType: c.cardType || '非会员',
+        phone: c.phone || '',
+        idNumber: c.idNumber || '',
+        amount: Number(c.amount ?? 0),
+        balance: Number(c.balance ?? 0),
+        giftBalance: Number(c.giftBalance ?? 0),
+        salesId: String(c.salesId || ''),
+        salesName: c.salesName || '',
+        serviceSalesId: c.serviceSalesId ? String(c.serviceSalesId) : undefined,
+        serviceSalesName: c.serviceSalesName || undefined,
+        shop: c.shop || c.storeName || '',
+        consumeType: c.consumeType || '订房',
+        content: c.content || '',
+        remark: c.remark || '',
+        roomNumber: c.roomNumber || undefined,
+        bookingDate: c.bookingDate || undefined,
+        paymentMethod: c.paymentMethod || undefined,
+        paymentVoucher: c.paymentVoucher || undefined,
+      })) as ConsumeRecord[];
+      setConsumeRecords(cons);
+    } catch {}
+  };
 
   const generateLeaderId = () => {
     const maxId = teamLeaders.reduce((max, leader) => {
@@ -182,6 +370,9 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
         generateLeaderId,
         generateSalesId,
         generateMemberId,
+        refreshMembers,
+        refreshReservations,
+        refreshConsumeRecords,
       }}
     >
       {children}
