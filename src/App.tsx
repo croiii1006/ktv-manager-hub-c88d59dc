@@ -69,6 +69,24 @@ const App = () => (
                 </ProtectedRoute>
               }
             >
+              {/* If user visits /dashboard directly, redirect to team-leaders.
+                  However, if they visit /dashboard/users, the nested routes below match first.
+                  Wait, index route only matches if path is EXACTLY /dashboard. 
+                  So if path is /dashboard/users, index route is ignored. 
+                  So the redirect issue might be somewhere else or misunderstanding.
+                  
+                  Actually, in React Router v6:
+                  <Route index ...> matches when parent path is matched exactly.
+                  So /dashboard matches index -> redirects to team-leaders.
+                  /dashboard/users matches path="users" -> renders UserManagement.
+                  
+                  If the user says refreshing /dashboard/users redirects to /dashboard/team-leaders,
+                  it means either:
+                  1. Auth state is lost initially (isAuthenticated=false), redirects to /login, 
+                     then Login page sees token and redirects to /dashboard (which hits index -> team-leaders).
+                  
+                  Let's check AuthContext.
+              */}
               <Route index element={<Navigate to="team-leaders" replace />} />
               <Route path="team-leaders" element={<TeamLeaderManagement />} />
               <Route path="salespersons" element={<SalespersonManagement />} />

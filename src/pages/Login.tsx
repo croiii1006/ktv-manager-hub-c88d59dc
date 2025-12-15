@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,12 +11,15 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     if (isAuthenticated) {
-      navigate("/dashboard", { replace: true });
+      // Check if there's a state with 'from' location to redirect back
+      const from = location.state?.from?.pathname || "/dashboard";
+      navigate(from, { replace: true });
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, navigate, location]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,7 +30,7 @@ export default function Login() {
     setLoading(false);
     
     if (ok) {
-      navigate("/dashboard", { replace: true });
+      // navigate logic is handled in useEffect
     }
   };
 
@@ -46,6 +49,7 @@ export default function Login() {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 disabled={loading}
+                autoComplete="username"
               />
             </div>
             <div className="space-y-2">
@@ -56,6 +60,7 @@ export default function Login() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={loading}
+                autoComplete="current-password"
               />
             </div>
             <Button type="submit" className="w-full" disabled={loading}>

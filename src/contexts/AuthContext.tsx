@@ -17,15 +17,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const login = async (username: string, password: string) => {
     try {
       const res = await AuthApi.adminLogin({ username, password });
+      
+      // Handle business error where HTTP status is 200 but success is false
+      if (res.success === false) {
+        toast.error(res.message || res.msg || "登录失败，请检查用户名或密码");
+        return false;
+      }
+
       if (res.data?.token) {
         setIsAuthenticated(true);
         setAuthToken(res.data.token);
         return true;
       }
       return false;
-    } catch (error) {
+    } catch (error: any) {
       console.error("Login failed:", error);
-      toast.error("登录失败，请检查用户名或密码");
+      const msg = error.message || "登录失败，请检查用户名或密码";
+      toast.error(msg);
       return false;
     }
   };

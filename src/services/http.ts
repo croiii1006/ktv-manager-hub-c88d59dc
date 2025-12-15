@@ -4,8 +4,7 @@ export const getAuthToken = () => localStorage.getItem(TOKEN_KEY) || '';
 export const setAuthToken = (token: string) => localStorage.setItem(TOKEN_KEY, token);
 export const clearAuthToken = () => localStorage.removeItem(TOKEN_KEY);
 
-const API_BASE_URL: string = (import.meta as unknown as { env?: Record<string, string> })
-  .env?.VITE_API_BASE_URL ?? 'http://94.74.101.163:9001';
+const API_BASE_URL: string = '';
 
 type Method = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
 
