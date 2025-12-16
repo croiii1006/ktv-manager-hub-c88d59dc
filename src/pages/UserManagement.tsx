@@ -152,8 +152,8 @@ export default function UserManagement() {
   });
 
   const rechargeMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: RechargeApplyCreateReq }) =>
-      MembersApi.recharge(id, data),
+    mutationFn: (data: { memberId: number; storeId: number; staffId?: number; amount: number; giftAmount?: number; voucherUrls?: string[]; remark?: string }) =>
+      RechargesApi.adminDirect(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['members'] });
       queryClient.invalidateQueries({ queryKey: ['recharges'] });
@@ -260,16 +260,13 @@ export default function UserManagement() {
     }
 
     rechargeMutation.mutate({
-      id: selectedMember.id,
-      data: {
-        memberId: selectedMember.id,
-        amount,
-        giftAmount,
-        storeId: rechargeForm.shop,
-        remark: rechargeForm.giftProductRemark,
-        voucherUrls: rechargeForm.voucher ? [rechargeForm.voucher] : [],
-        staffId: 1, // TODO: current user
-      } as any,
+      memberId: selectedMember.id,
+      amount,
+      giftAmount: giftAmount || undefined,
+      storeId: rechargeForm.shop,
+      remark: rechargeForm.giftProductRemark || undefined,
+      voucherUrls: rechargeForm.voucher ? [rechargeForm.voucher] : undefined,
+      staffId: 1,
     });
   };
 

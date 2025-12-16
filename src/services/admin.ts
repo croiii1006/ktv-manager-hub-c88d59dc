@@ -83,6 +83,8 @@ export const RechargesApi = {
   list: (query?: { page?: number; size?: number; memberId?: number; staffId?: number; storeId?: number; status?: string }) =>
     request<ApiResult<PageResultRechargeResp>>(`${ADMIN}/recharge-applies`, { method: 'GET', query }),
   detail: (id: number) => request<ApiResult<RechargeResp>>(`${ADMIN}/recharge-applies/${id}`, { method: 'GET' }),
+  adminDirect: (body: AdminDirectRechargeReq) =>
+    request<ApiResult<RechargeResp>>(`${ADMIN}/recharge-applies/admin-direct`, { method: 'POST', body }),
 };
 
 export const ConsumesApi = {
@@ -127,4 +129,14 @@ export const AuthApi = {
     request<ApiResult<{ token: string }>>(`/api/auth/admin/login`, { method: 'POST', body }),
   logout: () => request<ApiResult<void>>(`/api/auth/logout`, { method: 'POST' }),
   refresh: (body: unknown) => request<ApiResult<{ token: string }>>(`/api/auth/refresh`, { method: 'POST', body }),
+};
+
+export type AdminDirectRechargeReq = {
+  memberId: number;
+  storeId: number;
+  staffId?: number;
+  amount: number;
+  giftAmount?: number;
+  voucherUrls?: string[];
+  remark?: string;
 };
