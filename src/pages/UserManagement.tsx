@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Plus, Edit2, Trash2, Eye, Loader2, UserCog, Wallet, ReceiptText } from 'lucide-react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, useQueries } from '@tanstack/react-query';
 import { MembersApi, RechargesApi, ConsumesApi, SalespersonsApi, MemberBindingsApi } from '@/services/admin';
 import { MemberResp, MemberReq, RechargeApplyCreateReq, MemberBindingReq } from '@/models';
 import SalesSelect from '@/components/SalesSelect';
@@ -79,6 +79,35 @@ export default function UserManagement() {
   const salesMap = new Map(salespersons.map((s) => [s.id, s.name]));
 
   const members = membersResp?.data?.list || [];
+  const memberIds = members.map((m) => m.id).filter((id): id is number => typeof id === 'number');
+  const bindingQueries = useQueries({
+    queries: memberIds.map((id) => ({
+      queryKey: ['member-binding', id],
+      queryFn: () => MemberBindingsApi.list({ memberId: id, page: 1, size: 1 }),
+      enabled: !!id,
+    })),
+  });
+  const bindingStaffIdMap = new Map<number, number>();
+  bindingQueries.forEach((q, idx) => {
+    const mid = memberIds[idx];
+    const b = q.data?.data?.list?.[0];
+    if (mid && b?.staffId) bindingStaffIdMap.set(mid, b.staffId);
+  });
+  const bindingStaffIds = Array.from(new Set(Array.from(bindingStaffIdMap.values())));
+  const bindingStaffQueries = useQueries({
+    queries: bindingStaffIds.map((sid) => ({
+      queryKey: ['staff-detail', sid],
+      queryFn: () => SalespersonsApi.detail(sid),
+      enabled: !!sid,
+    })),
+  });
+  const bindingStaffNameMap = new Map<number, string>();
+  bindingStaffQueries.forEach((q, idx) => {
+    const sid = bindingStaffIds[idx];
+    const name = q.data?.data?.name;
+    if (sid && name) bindingStaffNameMap.set(sid, name);
+  });
+
   const total = membersResp?.data?.total || 0;
   const totalPages = Math.ceil(total / size);
 
@@ -260,19 +289,38 @@ export default function UserManagement() {
 
   // Detail queries
   const { data: rechargeRecordsResp } = useQuery({
-    queryKey: ['recharges', selectedMember?.id],
-    queryFn: () => RechargesApi.list({ memberId: String(selectedMember?.id), page: 1, size: 20 }),
+    queryKey: ['member-recharge-records', selectedMember?.id],
+    queryFn: () => MembersApi.rechargeRecords(selectedMember!.id, { page: 1, size: 20 }),
     enabled: !!selectedMember && detailModalOpen,
   });
 
   const { data: consumeRecordsResp } = useQuery({
-    queryKey: ['consumes', selectedMember?.id],
-    queryFn: () => ConsumesApi.list({ memberId: String(selectedMember?.id), page: 1, size: 20 }),
+    queryKey: ['member-consume-records', selectedMember?.id],
+    queryFn: () => MembersApi.consumeRecords(selectedMember!.id, { page: 1, size: 20 }),
     enabled: !!selectedMember && detailModalOpen,
   });
 
   const memberRechargeRecords = rechargeRecordsResp?.data?.list || [];
   const memberConsumeRecords = consumeRecordsResp?.data?.list || [];
+
+  
+
+  const renderStatusBadge = (status?: string) => {
+    switch (status) {
+      case 'PENDING':
+        return <Badge className="bg-amber-500 text-primary-foreground">待审核</Badge>;
+      case 'APPROVED':
+        return <Badge className="bg-green-500 text-primary-foreground">已通过</Badge>;
+      case 'REJECTED':
+        return <Badge className="bg-red-500 text-primary-foreground">已拒绝</Badge>;
+      case 'CANCELLED':
+        return <Badge variant="secondary">已取消</Badge>;
+      case 'VOID':
+        return <Badge variant="secondary">作废</Badge>;
+      default:
+        return <Badge variant="secondary">未知</Badge>;
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -327,7 +375,13 @@ export default function UserManagement() {
                   <td className="px-3 py-3 text-sm font-medium text-green-600">¥{(member.balance || 0).toLocaleString()}</td>
                   <td className="px-3 py-3 text-sm font-medium text-blue-600">¥{(member.giftBalance || 0).toLocaleString()}</td>
                   <td className="px-3 py-3 text-sm">
-                    {member.salesName || (member.salesId ? salesMap.get(member.salesId) || member.salesId : '-')}
+                    {(() => {
+                      const bid = bindingStaffIdMap.get(member.id!);
+                      if (bid) return bindingStaffNameMap.get(bid) || bid;
+                      if (member.salesName) return member.salesName;
+                      if (member.salesId) return salesMap.get(member.salesId) || member.salesId;
+                      return '-';
+                    })()}
                   </td>
                   <td className="px-3 py-3">
                     <div className="flex gap-1 flex-wrap">
@@ -677,7 +731,13 @@ export default function UserManagement() {
                 {selectedMember?.id} {selectedMember?.name}
               </span>
               <span className="text-sm font-normal text-muted-foreground">
-                业务员：{selectedMember?.salesName || (selectedMember?.salesId ? salesMap.get(selectedMember?.salesId) || selectedMember?.salesId : '-')}
+                业务员：{(() => {
+                  const bid = selectedMember?.id ? bindingStaffIdMap.get(selectedMember.id) : undefined;
+                  if (bid) return bindingStaffNameMap.get(bid) || bid;
+                  if (selectedMember?.salesName) return selectedMember.salesName;
+                  if (selectedMember?.salesId) return salesMap.get(selectedMember.salesId) || selectedMember.salesId;
+                  return '-';
+                })()}
               </span>
             </DialogTitle>
           </DialogHeader>
@@ -709,28 +769,21 @@ export default function UserManagement() {
               <table className="w-full border border-border rounded-md">
                 <thead>
                   <tr className="bg-muted/50">
-                    <th className="px-3 py-2 text-left text-sm font-medium">
-                      日期
-                    </th>
-                    <th className="px-3 py-2 text-left text-sm font-medium">
-                      金额
-                    </th>
-                    <th className="px-3 py-2 text-left text-sm font-medium">
-                      余额
-                    </th>
-                    <th className="px-3 py-2 text-left text-sm font-medium">
-                      赠送余额
-                    </th>
-                    <th className="px-3 py-2 text-left text-sm font-medium">
-                      备注
-                    </th>
+                    <th className="px-3 py-2 text-left text-sm font-medium">日期</th>
+                    <th className="px-3 py-2 text-left text-sm font-medium">申请单号</th>
+                    <th className="px-3 py-2 text-left text-sm font-medium">本金</th>
+                    <th className="px-3 py-2 text-left text-sm font-medium">赠送金</th>
+                    <th className="px-3 py-2 text-left text-sm font-medium">本金余额</th>
+                    <th className="px-3 py-2 text-left text-sm font-medium">赠送余额</th>
+                    <th className="px-3 py-2 text-left text-sm font-medium">审核时间</th>
+                    <th className="px-3 py-2 text-left text-sm font-medium">备注</th>
                   </tr>
                 </thead>
                 <tbody>
                   {memberRechargeRecords.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={8}
                         className="px-3 py-4 text-center text-muted-foreground"
                       >
                         暂无充值记录
@@ -740,16 +793,13 @@ export default function UserManagement() {
                     memberRechargeRecords.map((record) => (
                       <tr key={record.id} className="border-t border-border">
                         <td className="px-3 py-2 text-sm">{record.createdAt}</td>
-                        <td className="px-3 py-2 text-sm font-medium text-green-600">
-                          +{record.amount}
-                        </td>
+                        <td className="px-3 py-2 text-sm">{record.applyNo}</td>
+                        <td className="px-3 py-2 text-sm font-medium text-green-600">+¥{record.amount}</td>
+                        <td className="px-3 py-2 text-sm font-medium text-blue-600">+¥{record.giftAmount}</td>
                         <td className="px-3 py-2 text-sm">¥{record.balance}</td>
-                        <td className="px-3 py-2 text-sm">
-                          ¥{record.giftBalance}
-                        </td>
-                        <td className="px-3 py-2 text-sm text-muted-foreground">
-                          {record.remark || '-'}
-                        </td>
+                        <td className="px-3 py-2 text-sm">¥{record.giftBalance}</td>
+                        <td className="px-3 py-2 text-sm">{record.reviewedAt || '-'}</td>
+                        <td className="px-3 py-2 text-sm text-muted-foreground">{record.remark || '-'}</td>
                       </tr>
                     ))
                   )}
@@ -763,31 +813,21 @@ export default function UserManagement() {
               <table className="w-full border border-border rounded-md">
                 <thead>
                   <tr className="bg-muted/50">
-                    <th className="px-3 py-2 text-left text-sm font-medium">
-                      日期
-                    </th>
-                    <th className="px-3 py-2 text-left text-sm font-medium">
-                      金额
-                    </th>
-                    <th className="px-3 py-2 text-left text-sm font-medium">
-                      余额
-                    </th>
-                    <th className="px-3 py-2 text-left text-sm font-medium">
-                      赠送余额
-                    </th>
-                    <th className="px-3 py-2 text-left text-sm font-medium">
-                      消费类型
-                    </th>
-                    <th className="px-3 py-2 text-left text-sm font-medium">
-                      备注
-                    </th>
+                    <th className="px-3 py-2 text-left text-sm font-medium">日期</th>
+                    <th className="px-3 py-2 text-left text-sm font-medium">消费单号</th>
+                    <th className="px-3 py-2 text-left text-sm font-medium">消费类型</th>
+                    <th className="px-3 py-2 text-left text-sm font-medium">消费金额</th>
+                    <th className="px-3 py-2 text-left text-sm font-medium">本金余额</th>
+                    <th className="px-3 py-2 text-left text-sm font-medium">赠送余额</th>
+                    <th className="px-3 py-2 text-left text-sm font-medium">审核时间</th>
+                    <th className="px-3 py-2 text-left text-sm font-medium">备注</th>
                   </tr>
                 </thead>
                 <tbody>
                   {memberConsumeRecords.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={6}
+                        colSpan={8}
                         className="px-3 py-4 text-center text-muted-foreground"
                       >
                         暂无消费记录
@@ -797,19 +837,13 @@ export default function UserManagement() {
                     memberConsumeRecords.map((record) => (
                       <tr key={record.id} className="border-t border-border">
                         <td className="px-3 py-2 text-sm">{record.createdAt}</td>
-                        <td className="px-3 py-2 text-sm font-medium text-red-600">
-                          {record.consumeAmount}
-                        </td>
+                        <td className="px-3 py-2 text-sm">{record.consumeNo}</td>
+                        <td className="px-3 py-2 text-sm">{record.consumeType || '-'}</td>
+                        <td className="px-3 py-2 text-sm font-medium text-red-600">-¥{record.consumeAmount}</td>
                         <td className="px-3 py-2 text-sm">¥{record.balance}</td>
-                        <td className="px-3 py-2 text-sm">
-                          ¥{record.giftBalance}
-                        </td>
-                        <td className="px-3 py-2 text-sm">
-                          -
-                        </td>
-                        <td className="px-3 py-2 text-sm text-muted-foreground">
-                          {record.remark || '-'}
-                        </td>
+                        <td className="px-3 py-2 text-sm">¥{record.giftBalance}</td>
+                        <td className="px-3 py-2 text-sm">{record.reviewedAt || '-'}</td>
+                        <td className="px-3 py-2 text-sm text-muted-foreground">{record.remark || '-'}</td>
                       </tr>
                     ))
                   )}
