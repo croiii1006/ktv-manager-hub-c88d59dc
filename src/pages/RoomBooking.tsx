@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { format, addDays } from 'date-fns';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, useQueries } from '@tanstack/react-query';
 import { StoresApi, RoomSchedulesApi, BookingsApi, MembersApi, SalespersonsApi } from '@/services/admin';
 import { RoomScheduleResp, RoomScheduleRoomResp, AdminDirectReservationReq } from '@/models';
 import ShopSelect from '@/components/ShopSelect';
@@ -14,10 +14,10 @@ import { toast } from 'sonner';
 export default function RoomBooking() {
   const queryClient = useQueryClient();
   const [selectedStore, setSelectedStore] = useState<number | undefined>(undefined);
+  const [startDate, setStartDate] = useState<Date>(new Date());
   const dateColumns = useMemo(() => {
-    const t = new Date();
-    return Array.from({ length: 7 }, (_, i) => format(addDays(t, i), 'yyyy-MM-dd'));
-  }, []);
+    return Array.from({ length: 7 }, (_, i) => format(addDays(startDate, i), 'yyyy-MM-dd'));
+  }, [startDate]);
 
   const [selectedSlot, setSelectedSlot] = useState<{ room: RoomScheduleRoomResp; date: string } | null>(null);
   const [selectedReservationId, setSelectedReservationId] = useState<number | undefined>(undefined);
@@ -41,8 +41,25 @@ export default function RoomBooking() {
       }),
     enabled: !!selectedStore,
   });
-
-  const rooms = (scheduleResp?.data?.rooms || []) as RoomScheduleRoomResp[];
+  const storeList = storesResp?.data?.list || [];
+  const storeMap = new Map(storeList.map((s) => [s.id, s.name]));
+  const storeIds = storeList.map((s) => s.id).filter((id): id is number => typeof id === 'number');
+  const schedulesAll = useQueries({
+    queries: storeIds.map((id) => ({
+      queryKey: ['room-schedules', id, dateColumns[0], dateColumns[dateColumns.length - 1]],
+      queryFn: () =>
+        RoomSchedulesApi.list({
+          storeId: id,
+          startDate: dateColumns[0],
+          endDate: dateColumns[dateColumns.length - 1],
+        }),
+      enabled: !selectedStore && storeIds.length > 0,
+    })),
+  });
+  const roomsAll = schedulesAll.flatMap((q) => ((q.data as RoomScheduleResp | undefined)?.data?.rooms || [])) as RoomScheduleRoomResp[];
+  const rooms = (selectedStore ? (scheduleResp?.data?.rooms || []) : roomsAll) as RoomScheduleRoomResp[];
+  const loadingAll = schedulesAll.length > 0 && schedulesAll.some((q) => q.isLoading);
+  const loading = selectedStore ? isLoading : loadingAll;
 
   const adminDirectMutation = useMutation({
     mutationFn: async (body: AdminDirectReservationReq) => {
@@ -129,11 +146,17 @@ export default function RoomBooking() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <div className="w-64">
-          <ShopSelect value={selectedStore} returnId={true} onChange={setSelectedStore} className="w-full" />
+      <div className="flex items-center gap-3 justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-64">
+            <ShopSelect value={selectedStore} returnId={true} onChange={setSelectedStore} className="w-full" />
+          </div>
+          <span className="text-sm text-muted-foreground">{dateColumns[0]} 至 {dateColumns[dateColumns.length - 1]}</span>
         </div>
-        <span className="text-sm text-muted-foreground">选择店铺后加载7日房态</span>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setStartDate(addDays(startDate, -7))}>上一周</Button>
+          <Button variant="outline" size="sm" onClick={() => setStartDate(addDays(startDate, 7))}>下一周</Button>
+        </div>
       </div>
 
       <div className="bg-card rounded-lg border border-border overflow-hidden">
@@ -141,9 +164,10 @@ export default function RoomBooking() {
           <table className="w-full">
             <thead>
               <tr className="bg-muted/50 border-b border-border">
-                <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap sticky left-0 bg-muted/50 z-10">房号</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap sticky left-20 bg-muted/50 z-10">房型</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap sticky left-36 bg-muted/50 z-10">价格</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap sticky left-0 bg-muted/50 z-10">店铺</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap sticky left-20 bg-muted/50 z-10">房号</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap">房型</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap">价格</th>
                 {dateColumns.map((date) => (
                   <th key={date} className="px-3 py-3 text-center text-sm font-medium text-muted-foreground whitespace-nowrap min-w-[100px]">
                     {format(new Date(date), 'MM/dd')}
@@ -152,20 +176,21 @@ export default function RoomBooking() {
               </tr>
             </thead>
             <tbody>
-              {isLoading ? (
+              {loading ? (
                 <tr>
                   <td colSpan={3 + dateColumns.length} className="px-4 py-6 text-center text-sm text-muted-foreground">加载中...</td>
                 </tr>
               ) : rooms.length === 0 ? (
                 <tr>
-                  <td colSpan={3 + dateColumns.length} className="px-4 py-6 text-center text-sm text-muted-foreground">请选择店铺</td>
+                  <td colSpan={3 + dateColumns.length} className="px-4 py-6 text-center text-sm text-muted-foreground">暂无房态数据</td>
                 </tr>
               ) : (
                 rooms.map((room) => (
                   <tr key={room.id} className="border-b border-border hover:bg-muted/20 transition-colors">
-                    <td className="px-4 py-3 text-sm font-medium whitespace-nowrap sticky left-0 bg-card z-10">{room.roomNo}</td>
-                    <td className="px-4 py-3 text-sm whitespace-nowrap sticky left-20 bg-card z-10">{room.roomType}</td>
-                    <td className="px-4 py-3 text-sm whitespace-nowrap sticky left-36 bg-card z-10">¥{room.price}</td>
+                    <td className="px-4 py-3 text-sm font-medium whitespace-nowrap sticky left-0 bg-card z-10">{storeMap.get(room.storeId as number) || room.storeId}</td>
+                    <td className="px-4 py-3 text-sm font-medium whitespace-nowrap sticky left-20 bg-card z-10">{room.roomNo}</td>
+                    <td className="px-4 py-3 text-sm whitespace-nowrap">{room.roomType}</td>
+                    <td className="px-4 py-3 text-sm whitespace-nowrap">¥{room.price}</td>
                     {dateColumns.map((date) => {
                       const b = room.bookings?.[date];
                       const state = b?.state || 'AVAILABLE';
@@ -250,12 +275,12 @@ export default function RoomBooking() {
                 <Button variant="outline" onClick={() => setSelectedSlot(null)}>取消</Button>
                 <Button
                   onClick={() => {
-                    if (!selectedSlot || !selectedStore || !memberId) {
-                      toast.error('请选择店铺与会员');
+                    if (!selectedSlot || !memberId) {
+                      toast.error('请选择会员');
                       return;
                     }
                     const body: AdminDirectReservationReq = {
-                      storeId: selectedStore,
+                      storeId: selectedStore ?? (selectedSlot.room.storeId as number),
                       roomId: selectedSlot.room.id!,
                       memberId: memberId,
                       staffId: applyStaffId,
