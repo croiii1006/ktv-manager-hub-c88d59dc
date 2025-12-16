@@ -152,8 +152,13 @@ export default function UserManagement() {
   });
 
   const rechargeMutation = useMutation({
-    mutationFn: (data: { memberId: number; storeId: number; staffId?: number; amount: number; giftAmount?: number; voucherUrls?: string[]; remark?: string }) =>
-      RechargesApi.adminDirect(data),
+    mutationFn: async (data: { memberId: number; storeId: number; staffId?: number; amount: number; giftAmount?: number; voucherUrls?: string[]; remark?: string }) => {
+      const resp = await RechargesApi.adminDirect(data);
+      if (!resp.success) {
+        throw new Error(resp.message || '充值申请提交失败');
+      }
+      return resp.data;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['members'] });
       queryClient.invalidateQueries({ queryKey: ['recharges'] });
@@ -674,7 +679,7 @@ export default function UserManagement() {
                   placeholder="输入赠送产品备注"
                 />
               </div>
-              <div>
+              <div style={{display: 'none'}}>
                 <label className="block text-sm font-medium mb-1">
                   支付凭证
                 </label>
