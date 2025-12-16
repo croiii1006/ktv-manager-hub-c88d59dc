@@ -1,245 +1,88 @@
-import { useState } from 'react';
-import { format, addDays, subDays } from 'date-fns';
+import { useState, useMemo } from 'react';
+import { format, addDays } from 'date-fns';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { BookingsApi, RoomSchedulesApi, MembersApi, StoresApi } from '@/services/admin';
-import { ReservationCreateReq, RoomScheduleBookingResp, ReservationCancelReq } from '@/models';
-import { PAYMENT_METHODS } from '@/types';
-import { Button } from '@/components/ui/button';
-import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { StoresApi, RoomSchedulesApi, BookingsApi, MembersApi, SalespersonsApi } from '@/services/admin';
+import { RoomScheduleResp, RoomScheduleRoomResp, AdminDirectReservationReq } from '@/models';
+import ShopSelect from '@/components/ShopSelect';
 import SalesSelect from '@/components/SalesSelect';
+import MemberSelect from '@/components/MemberSelect';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 export default function RoomBooking() {
   const queryClient = useQueryClient();
-  const [selectedBooking, setSelectedBooking] =
-    useState<RoomScheduleBookingResp | null>(null);
-  const [selectedRoom, setSelectedRoom] = useState<{ roomId: number; roomNo: string; roomType: string; storeName: string } | null>(null);
-  const [selectedDate, setSelectedDate] = useState<string>('');
-  
-  const [modalMode, setModalMode] = useState<
-    'book' | 'booked' | 'finished' | 'payment' | null
-  >(null);
-  const [earlyTerminationReason, setEarlyTerminationReason] = useState('');
-  const [cancelReason, setCancelReason] = useState('');
-  
-  // Store selection
-  const [selectedStoreId, setSelectedStoreId] = useState<number | null>(null);
+  const [selectedStore, setSelectedStore] = useState<number | undefined>(undefined);
+  const dateColumns = useMemo(() => {
+    const t = new Date();
+    return Array.from({ length: 7 }, (_, i) => format(addDays(t, i), 'yyyy-MM-dd'));
+  }, []);
 
-  // Date range
-  const [currentStartDate, setCurrentStartDate] = useState(new Date());
+  const [selectedSlot, setSelectedSlot] = useState<{ room: RoomScheduleRoomResp; date: string } | null>(null);
+  const [selectedReservationId, setSelectedReservationId] = useState<number | undefined>(undefined);
+  const [memberId, setMemberId] = useState<number | undefined>(undefined);
+  const [applyStaffId, setApplyStaffId] = useState<number | undefined>(undefined);
+  const [guestCount, setGuestCount] = useState<number | undefined>(undefined);
+  const [remark, setRemark] = useState<string>('');
 
-  // 预定表单
-  const [bookingForm, setBookingForm] = useState({
-    customerName: '',
-    customerId: 0,
-    salesId: 0,
-    salesName: '',
-  });
-
-  // 客户搜索（姓名/手机号/编号）
-  const [customerSearch, setCustomerSearch] = useState('');
-  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
-
-  // Fetch stores
   const { data: storesResp } = useQuery({
     queryKey: ['stores'],
     queryFn: () => StoresApi.list({ page: 1, size: 100 }),
   });
-  const stores = storesResp?.data?.list || [];
 
-  // Set default store
-  if (selectedStoreId === null && stores.length > 0 && stores[0].id) {
-    setSelectedStoreId(stores[0].id);
-  }
-
-  // Calculate dates
-  const dateColumns = Array.from({ length: 7 }, (_, i) =>
-    format(addDays(currentStartDate, i), 'yyyy-MM-dd')
-  );
-  const startDateStr = dateColumns[0];
-  const endDateStr = dateColumns[6];
-
-  // Fetch schedule
-  const { data: scheduleResp } = useQuery({
-    queryKey: ['room-schedules', selectedStoreId, startDateStr, endDateStr],
-    queryFn: () => RoomSchedulesApi.list({ 
-      storeId: selectedStoreId!, 
-      startDate: startDateStr, 
-      endDate: endDateStr
-    }),
-    enabled: !!selectedStoreId,
-  });
-  
-  const scheduleRooms = scheduleResp?.data?.rooms || [];
-
-  // Fetch members for search
-  const { data: membersResp } = useQuery({
-    queryKey: ['members', customerSearch],
-    queryFn: () => MembersApi.list({ keyword: customerSearch, page: 1, size: 10 }),
-    enabled: customerSearch.length > 0,
-  });
-  const matchedMembers = membersResp?.data?.list || [];
-
-  // Mutations
-  const createBookingMutation = useMutation({
-    mutationFn: (data: any) => BookingsApi.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['room-schedules'] });
-      toast.success('预定成功');
-      setModalMode(null);
-      setSelectedBooking(null);
-    },
-    onError: () => toast.error('预定失败'),
+  const { data: scheduleResp, isLoading } = useQuery({
+    queryKey: ['room-schedules', selectedStore, dateColumns[0], dateColumns[dateColumns.length - 1]],
+    queryFn: () =>
+      RoomSchedulesApi.list({
+        storeId: selectedStore!,
+        startDate: dateColumns[0],
+        endDate: dateColumns[dateColumns.length - 1],
+      }),
+    enabled: !!selectedStore,
   });
 
-  const updateBookingMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: ReservationCreateReq }) =>
-      BookingsApi.update(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['room-schedules'] });
-      toast.success('更新成功');
-      setModalMode(null);
-      setSelectedBooking(null);
-    },
-    onError: () => toast.error('更新失败'),
-  });
+  const rooms = (scheduleResp?.data?.rooms || []) as RoomScheduleRoomResp[];
 
-  const cancelBookingMutation = useMutation({
-    mutationFn: (data: ReservationCancelReq) => BookingsApi.cancel(data.id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['room-schedules'] });
-      toast.success('取消成功');
-      setModalMode(null);
-      setSelectedBooking(null);
-      setCancelReason('');
-    },
-    onError: () => toast.error('取消失败'),
-  });
-
-  // 支付表单
-  const [paymentForm, setPaymentForm] = useState({
-    serviceSalesId: 0,
-    serviceSalesName: '',
-    paymentMethod: PAYMENT_METHODS[0],
-    paymentVoucher: '',
-    time: format(new Date(), 'HH:mm'),
-  });
-
-  const handleCellClick = (room: any, date: string) => {
-    const booking = room.bookings?.[date] as RoomScheduleBookingResp | undefined;
-    
-    // Store room info for modal
-    // room object from schedule likely contains id which is the roomId
-    setSelectedRoom({
-      roomId: room.id,
-      roomNo: room.roomNo,
-      roomType: room.roomType,
-      storeName: stores.find(s => s.id === selectedStoreId)?.name || '',
-    });
-    setSelectedDate(date);
-
-    if (!booking) {
-      // Create new booking
-      setSelectedBooking(null);
-      setModalMode('book');
-      setBookingForm({
-        customerName: '',
-        customerId: 0,
-        salesId: 0,
-        salesName: '',
-      });
-      setCustomerSearch('');
-      setShowCustomerDropdown(false);
-    } else {
-      setSelectedBooking(booking);
-      // Determine mode based on status
-      const status = booking.status; 
-      
-      if (status === 'COMPLETED') {
-        setModalMode('finished');
-        setEarlyTerminationReason('');
-      } else {
-         setModalMode('booked');
-         setCancelReason('');
-         setPaymentForm({
-            serviceSalesId: 0,
-            serviceSalesName: '',
-            paymentMethod: PAYMENT_METHODS[0],
-            paymentVoucher: '',
-            time: format(new Date(), 'HH:mm'),
-          });
+  const adminDirectMutation = useMutation({
+    mutationFn: async (body: AdminDirectReservationReq) => {
+      const resp = await BookingsApi.adminDirect(body);
+      if (!resp.success) {
+        const error = new Error(resp.message || '预定失败');
+        throw error;
       }
-    }
-  };
+      return resp.data;
+    },
+    onSuccess: () => {
+      toast.success('预定成功（免审核）');
+      queryClient.invalidateQueries({ queryKey: ['room-schedules'] });
+      setSelectedSlot(null);
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : '预定失败';
+      toast.error(msg);
+      console.error(err);
+    },
+  });
 
-  const handleBook = () => {
-    if (!selectedRoom) return;
-
-    createBookingMutation.mutate({
-      // roomNo: selectedRoom.roomNo, // API might not need this if roomId is provided
-      reserveDate: selectedDate, // Changed from bookingDate to reserveDate
-      memberId: bookingForm.customerId,
-      salesId: bookingForm.salesId,
-      storeId: selectedStoreId!,
-      roomId: selectedRoom.roomId, 
-      staffId: 1, // TODO: current staff
-      guestCount: 1,
-      remark: '',
-    } as any); 
-  };
-  
-  const handleOpenPayment = () => setModalMode('payment');
-
-  const handleCancel = () => {
-    if (!selectedBooking?.reservationId) return;
-
-    cancelBookingMutation.mutate({
-      id: selectedBooking.reservationId,
-      staffId: 1, // TODO: Get current staff ID
-      reason: cancelReason || '用户取消',
-    });
-  };
-
-  const handleVoucherUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setPaymentForm((prev) => ({
-        ...prev,
-        paymentVoucher: reader.result as string,
-      }));
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const getStatusColor = (status?: string) => {
-    switch (status) {
-      case 'CONFIRMED':
-      case 'APPROVED':
+  const getStatusColor = (state?: string) => {
+    switch (state) {
+      case 'BOOKED':
         return 'bg-green-500 hover:bg-green-600 text-primary-foreground';
-      case 'COMPLETED':
+      case 'FINISHED':
         return 'bg-red-500 hover:bg-red-600 text-primary-foreground';
       case 'PENDING':
-        return 'bg-yellow-500 hover:bg-yellow-600 text-white';
+        return 'bg-amber-500 hover:bg-amber-600 text-primary-foreground';
       default:
         return 'bg-muted hover:bg-muted/80 text-muted-foreground';
     }
   };
 
-  const getStatusText = (status?: string) => {
-    switch (status) {
-      case 'CONFIRMED':
-      case 'APPROVED':
+  const getStatusText = (state?: string) => {
+    switch (state) {
+      case 'BOOKED':
         return '已预定';
-      case 'COMPLETED':
+      case 'FINISHED':
         return '已完成';
       case 'PENDING':
         return '待审核';
@@ -248,287 +91,215 @@ export default function RoomBooking() {
     }
   };
 
+  const { data: reservationDetailResp, isLoading: detailLoading } = useQuery({
+    queryKey: ['reservation-detail', selectedReservationId],
+    queryFn: () => BookingsApi.detail(selectedReservationId!),
+    enabled: !!selectedReservationId,
+  });
+
+  const memberDetailEnabled = !!reservationDetailResp?.data?.memberId && !!selectedReservationId;
+  const staffDetailEnabled = !!reservationDetailResp?.data?.staffId && !!selectedReservationId;
+
+  const { data: memberDetailResp } = useQuery({
+    queryKey: ['member-detail', reservationDetailResp?.data?.memberId],
+    queryFn: () => MembersApi.detail(reservationDetailResp!.data!.memberId!),
+    enabled: memberDetailEnabled,
+  });
+
+  const { data: staffDetailResp } = useQuery({
+    queryKey: ['staff-detail', reservationDetailResp?.data?.staffId],
+    queryFn: () => SalespersonsApi.detail(reservationDetailResp!.data!.staffId!),
+    enabled: staffDetailEnabled,
+  });
+
+  const getReservationStatusBadge = (status?: string) => {
+    switch (status) {
+      case 'PENDING':
+        return <span className="px-2 py-1 rounded text-xs bg-amber-500 text-primary-foreground">待审核</span>;
+      case 'APPROVED':
+        return <span className="px-2 py-1 rounded text-xs bg-green-500 text-primary-foreground">已通过</span>;
+      case 'REJECTED':
+        return <span className="px-2 py-1 rounded text-xs bg-red-500 text-primary-foreground">已拒绝</span>;
+      case 'CANCELLED':
+        return <span className="px-2 py-1 rounded text-xs bg-muted text-muted-foreground">已取消</span>;
+      default:
+        return <span className="px-2 py-1 rounded text-xs bg-muted text-muted-foreground">未知</span>;
+    }
+  };
+
   return (
     <div className="space-y-4">
-      {/* Shop Filter */}
-      <div className="flex justify-between items-center">
-        <div className="flex gap-2">
-          {stores.map((store) => (
-            <Button
-              key={store.id}
-              variant={selectedStoreId === store.id ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => store.id && setSelectedStoreId(store.id)}
-            >
-              {store.name}
-            </Button>
-          ))}
+      <div className="flex items-center gap-3">
+        <div className="w-64">
+          <ShopSelect value={selectedStore} returnId={true} onChange={setSelectedStore} className="w-full" />
         </div>
-        
-        {/* Date Navigation */}
-        <div className="flex items-center gap-2">
-           <Button variant="outline" size="sm" onClick={() => setCurrentStartDate(d => subDays(d, 7))}>
-             <ChevronLeft className="h-4 w-4 mr-1" />
-             上一周
-           </Button>
-           <span className="text-sm font-medium w-24 text-center">
-             {format(currentStartDate, 'MM/dd')}
-           </span>
-           <Button variant="outline" size="sm" onClick={() => setCurrentStartDate(d => addDays(d, 7))}>
-             下一周
-             <ChevronRight className="h-4 w-4 ml-1" />
-           </Button>
-        </div>
+        <span className="text-sm text-muted-foreground">选择店铺后加载7日房态</span>
       </div>
 
-      {/* Room Grid */}
       <div className="bg-card rounded-lg border border-border overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="bg-muted/50 border-b border-border">
-                <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap sticky left-0 bg-muted/50 z-10">
-                  房号
-                </th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap sticky left-16 bg-muted/50 z-10">
-                  房型
-                </th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap sticky left-0 bg-muted/50 z-10">房号</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap sticky left-20 bg-muted/50 z-10">房型</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground whitespace-nowrap sticky left-36 bg-muted/50 z-10">价格</th>
                 {dateColumns.map((date) => (
-                  <th
-                    key={date}
-                    className="px-3 py-3 text-center text-sm font-medium text-muted-foreground whitespace-nowrap min-w-[100px]"
-                  >
+                  <th key={date} className="px-3 py-3 text-center text-sm font-medium text-muted-foreground whitespace-nowrap min-w-[100px]">
                     {format(new Date(date), 'MM/dd')}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {scheduleRooms.map((room) => (
-                <tr
-                  key={room.id}
-                  className="border-b border-border hover:bg-muted/20 transition-colors"
-                >
-                  <td className="px-4 py-3 text-sm font-medium whitespace-nowrap sticky left-0 bg-card z-10">
-                    {room.roomNo}
-                  </td>
-                  <td className="px-4 py-3 text-sm whitespace-nowrap sticky left-16 bg-card z-10">
-                    {room.roomType}
-                  </td>
-                  {dateColumns.map((date) => {
-                    const booking = room.bookings?.[date];
-                    const status = booking ? (booking.status || 'APPROVED') : undefined;
-
-                    return (
-                      <td key={date} className="px-3 py-2 text-center">
-                        <button
-                          onClick={() => handleCellClick(room, date)}
-                          className={cn(
-                            'px-3 py-1.5 rounded-md text-xs font-medium transition-colors',
-                            getStatusColor(status)
-                          )}
-                        >
-                          {getStatusText(status)}
-                        </button>
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-              {scheduleRooms.length === 0 && (
+              {isLoading ? (
                 <tr>
-                   <td colSpan={2 + dateColumns.length} className="text-center py-4 text-muted-foreground">
-                      暂无房间信息
-                   </td>
+                  <td colSpan={3 + dateColumns.length} className="px-4 py-6 text-center text-sm text-muted-foreground">加载中...</td>
                 </tr>
+              ) : rooms.length === 0 ? (
+                <tr>
+                  <td colSpan={3 + dateColumns.length} className="px-4 py-6 text-center text-sm text-muted-foreground">请选择店铺</td>
+                </tr>
+              ) : (
+                rooms.map((room) => (
+                  <tr key={room.id} className="border-b border-border hover:bg-muted/20 transition-colors">
+                    <td className="px-4 py-3 text-sm font-medium whitespace-nowrap sticky left-0 bg-card z-10">{room.roomNo}</td>
+                    <td className="px-4 py-3 text-sm whitespace-nowrap sticky left-20 bg-card z-10">{room.roomType}</td>
+                    <td className="px-4 py-3 text-sm whitespace-nowrap sticky left-36 bg-card z-10">¥{room.price}</td>
+                    {dateColumns.map((date) => {
+                      const b = room.bookings?.[date];
+                      const state = b?.state || 'AVAILABLE';
+                      return (
+                        <td key={date} className="px-3 py-2 text-center">
+                          <button
+                            onClick={() => {
+                              if (state === 'AVAILABLE') {
+                                setSelectedSlot({ room, date });
+                              } else if ((state === 'BOOKED' || state === 'PENDING') && b?.reservationId) {
+                                setSelectedReservationId(b.reservationId);
+                              }
+                            }}
+                            className={cn('px-3 py-1.5 rounded-md text-xs font-medium transition-colors', getStatusColor(state))}
+                          >
+                            {getStatusText(state)}
+                          </button>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Legend */}
       <div className="flex gap-6 text-sm flex-wrap">
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded bg-muted" />
-          <span className="text-muted-foreground">可预订</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded bg-green-500" />
-          <span className="text-muted-foreground">已预定</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded bg-red-500" />
-          <span className="text-muted-foreground">已完成</span>
-        </div>
+        <div className="flex items-center gap-2"><div className="w-4 h-4 rounded bg-muted" /><span className="text-muted-foreground">可预订</span></div>
+        <div className="flex items-center gap-2"><div className="w-4 h-4 rounded bg-amber-500" /><span className="text-muted-foreground">待审核</span></div>
+        <div className="flex items-center gap-2"><div className="w-4 h-4 rounded bg-green-500" /><span className="text-muted-foreground">已预定</span></div>
+        <div className="flex items-center gap-2"><div className="w-4 h-4 rounded bg-red-500" /><span className="text-muted-foreground">已完成</span></div>
       </div>
 
-      {/* Book Modal */}
-      <Dialog
-        open={modalMode === 'book'}
-        onOpenChange={() => {
-          setModalMode(null);
-          setSelectedBooking(null);
-          setCustomerSearch('');
-          setShowCustomerDropdown(false);
-        }}
-      >
+      <Dialog open={!!selectedSlot} onOpenChange={() => setSelectedSlot(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>预定房间</DialogTitle>
+            <DialogTitle>后台直接预定（免审核）</DialogTitle>
           </DialogHeader>
-          {selectedRoom && (
+          {selectedSlot && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4 text-sm bg-muted/30 p-4 rounded-md">
-                <div>
-                  <span className="text-muted-foreground">房号：</span>
-                  <span className="font-medium">{selectedRoom.roomNo}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">房型：</span>
-                  <span>{selectedRoom.roomType}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">门店：</span>
-                  <span>{selectedRoom.storeName}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">日期：</span>
-                  <span>{selectedDate}</span>
-                </div>
+                <div><span className="text-muted-foreground">房号：</span><span className="font-medium">{selectedSlot.room.roomNo}</span></div>
+                <div><span className="text-muted-foreground">房型：</span><span>{selectedSlot.room.roomType}</span></div>
+                <div><span className="text-muted-foreground">价格：</span><span className="font-medium text-green-600">¥{selectedSlot.room.price}</span></div>
+                <div><span className="text-muted-foreground">日期：</span><span>{selectedSlot.date}</span></div>
               </div>
 
               <div className="space-y-3">
-                {/* 客户搜索 + 自动匹配编号 */}
-                <div className="relative">
-                  <label className="block text-sm font-medium mb-1">
-                    客户（输入姓名/手机号/编号搜索）
-                  </label>
+                <div>
+                  <label className="block text-sm font-medium mb-1">选择会员</label>
+                  <MemberSelect value={memberId} onChange={(id) => setMemberId(id)} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">申请业务员（可选）</label>
+                  <SalesSelect value={applyStaffId} onChange={(id) => setApplyStaffId(id)} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">预计人数（可选）</label>
                   <input
-                    type="text"
-                    value={customerSearch}
-                    onChange={(e) => {
-                      setCustomerSearch(e.target.value);
-                      setShowCustomerDropdown(true);
-                      setBookingForm((prev) => ({
-                        ...prev,
-                        customerName: '',
-                        customerId: 0,
-                        }));
-                    }}
-                    onFocus={() => {
-                      if (customerSearch.trim()) setShowCustomerDropdown(true);
-                    }}
+                    type="number"
+                    value={guestCount ?? ''}
+                    onChange={(e) => setGuestCount(e.target.value ? Number(e.target.value) : undefined)}
                     className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-                    placeholder="输入关键字搜索已登记客户"
+                    placeholder="填写预计人数"
                   />
-                  {showCustomerDropdown && matchedMembers.length > 0 && (
-                    <div className="absolute z-20 mt-1 w-full max-h-48 overflow-auto rounded-md border border-border bg-popover shadow-lg text-sm">
-                      {matchedMembers.map((m) => (
-                        <button
-                          key={m.id}
-                          type="button"
-                          className="w-full text-left px-3 py-1.5 hover:bg-muted transition-colors"
-                          onClick={() => {
-                            if (m.id && m.name) {
-                              setBookingForm((prev) => ({
-                                ...prev,
-                                customerName: m.name || '',
-                                customerId: m.id!,
-                              }));
-                              setCustomerSearch(
-                                `${m.name}${m.phone ? ' / ' + m.phone : ''} / ${
-                                  m.id
-                                }`
-                              );
-                              setShowCustomerDropdown(false);
-                            }
-                          }}
-                        >
-                          <div className="font-medium">{m.name}</div>
-                          <div className="text-xs text-muted-foreground">
-                            编号：{m.id}
-                            {m.phone && ` · 手机：${m.phone}`}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium mb-1">
-                    客户编号
-                  </label>
+                  <label className="block text-sm font-medium mb-1">备注（可选）</label>
                   <input
                     type="text"
-                    value={bookingForm.customerId || ''}
-                    readOnly
-                    className="w-full px-3 py-2 text-sm border border-border rounded-md bg-muted/40 text-muted-foreground cursor-not-allowed"
-                    placeholder="选择客户后自动填入"
+                    value={remark}
+                    onChange={(e) => setRemark(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                    placeholder="备注信息"
                   />
                 </div>
+              </div>
 
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    业务员
-                  </label>
-                  <SalesSelect
-                    value={bookingForm.salesId}
-                    onChange={(salesId, salesName) =>
-                      setBookingForm((prev) => ({ ...prev, salesId, salesName }))
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setSelectedSlot(null)}>取消</Button>
+                <Button
+                  onClick={() => {
+                    if (!selectedSlot || !selectedStore || !memberId) {
+                      toast.error('请选择店铺与会员');
+                      return;
                     }
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end">
-                <Button onClick={handleBook} disabled={createBookingMutation.isPending}>
-                  {createBookingMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  {createBookingMutation.isPending ? '预定中...' : '预定'}
+                    const body: AdminDirectReservationReq = {
+                      storeId: selectedStore,
+                      roomId: selectedSlot.room.id!,
+                      memberId: memberId,
+                      staffId: applyStaffId,
+                      reserveDate: selectedSlot.date,
+                      guestCount: guestCount,
+                      remark: remark || undefined,
+                    };
+                    adminDirectMutation.mutate(body);
+                  }}
+                  disabled={adminDirectMutation.isPending}
+                >
+                  {adminDirectMutation.isPending ? '处理中...' : '确认预定'}
                 </Button>
-              </div>
+              </DialogFooter>
             </div>
           )}
         </DialogContent>
       </Dialog>
 
-      {/* Booked Detail Modal */}
-      <Dialog
-        open={modalMode === 'booked'}
-        onOpenChange={() => {
-          setModalMode(null);
-          setSelectedBooking(null);
-        }}
-      >
+      <Dialog open={!!selectedReservationId} onOpenChange={() => setSelectedReservationId(undefined)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>已预定详情</DialogTitle>
+            <DialogTitle>预定详情</DialogTitle>
           </DialogHeader>
-          {selectedBooking && selectedRoom && (
+          {detailLoading ? (
+            <div className="px-4 py-6 text-center text-sm text-muted-foreground">加载中...</div>
+          ) : (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                 <div>房号: {selectedRoom.roomNo}</div>
-                 <div>客户: {selectedBooking.memberName}</div>
-              </div>
-              
-              <div className="space-y-2">
-                <label className="text-sm font-medium">取消原因</label>
-                <input
-                  className="w-full px-3 py-2 border border-border rounded-md text-sm"
-                  value={cancelReason}
-                  onChange={(e) => setCancelReason(e.target.value)}
-                  placeholder="如需取消，请填写原因"
-                />
-              </div>
-
-              <div className="flex justify-end gap-3">
-                <Button variant="destructive" onClick={handleCancel} disabled={cancelBookingMutation.isPending}>
-                   {cancelBookingMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                   {cancelBookingMutation.isPending ? '取消中...' : '取消预定'}
-                </Button>
-                <Button onClick={handleOpenPayment}>已到店支付</Button>
-              </div>
+              {reservationDetailResp?.data ? (
+                <div className="grid grid-cols-2 gap-4 text-sm bg-muted/30 p-4 rounded-md">
+                  <div><span className="text-muted-foreground">预订单号：</span><span className="font-medium">{reservationDetailResp.data.reserveNo}</span></div>
+                  <div><span className="text-muted-foreground">状态：</span>{getReservationStatusBadge(reservationDetailResp.data.status)}</div>
+                  <div><span className="text-muted-foreground">会员：</span><span className="font-medium">{memberDetailResp?.data?.name ?? '-'}</span></div>
+                  <div><span className="text-muted-foreground">业务员：</span><span className="font-medium">{staffDetailResp?.data?.name ?? '-'}</span></div>
+                  <div><span className="text-muted-foreground">预定日期：</span><span>{reservationDetailResp.data.reserveDate ? format(new Date(reservationDetailResp.data.reserveDate), 'yyyy-MM-dd') : '-'}</span></div>
+                  <div><span className="text-muted-foreground">人数：</span><span>{reservationDetailResp.data.guestCount ?? '-'}</span></div>
+                  <div className="col-span-2"><span className="text-muted-foreground">备注：</span><span>{reservationDetailResp.data.remark ?? '-'}</span></div>
+                </div>
+              ) : (
+                <div className="px-4 py-6 text-center text-sm text-muted-foreground">未找到预定详情</div>
+              )}
+              <DialogFooter>
+                <Button onClick={() => setSelectedReservationId(undefined)} variant="outline">关闭</Button>
+              </DialogFooter>
             </div>
           )}
         </DialogContent>

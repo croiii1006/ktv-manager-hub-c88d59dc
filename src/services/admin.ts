@@ -11,6 +11,8 @@ import type {
   MemberResp,
   MemberReq,
   PageResultMemberResp,
+  PageResultMemberRechargeRecordResp,
+  PageResultMemberConsumeRecordResp,
   RechargeResp,
   PageResultRechargeResp,
   RechargeApplyCreateReq,
@@ -19,6 +21,7 @@ import type {
   PageResultRoomResp,
   ReservationResp,
   ReservationCreateReq,
+  AdminDirectReservationReq,
   ReservationCancelReq,
   PageResultReservationResp,
   RoomScheduleResp,
@@ -70,18 +73,21 @@ export const MembersApi = {
   update: (id: number, body: MemberReq) => request<ApiResult<MemberResp>>(`${ADMIN}/members/${id}`, { method: 'PUT', body }),
   remove: (id: number) => request<ApiResult<void>>(`${ADMIN}/members/${id}`, { method: 'DELETE' }),
   recharge: (id: number, body: RechargeApplyCreateReq) => request<ApiResult<void>>(`${ADMIN}/recharge-applies`, { method: 'POST', body }),
+  rechargeRecords: (memberId: number, query?: { page?: number; size?: number }) =>
+    request<ApiResult<PageResultMemberRechargeRecordResp>>(`${ADMIN}/members/${memberId}/recharge-records`, { method: 'GET', query }),
+  consumeRecords: (memberId: number, query?: { page?: number; size?: number }) =>
+    request<ApiResult<PageResultMemberConsumeRecordResp>>(`${ADMIN}/members/${memberId}/consume-records`, { method: 'GET', query }),
 };
 
 export const RechargesApi = {
-  list: (query?: { page?: number; size?: number; memberId?: string; salesId?: number; shop?: string }) =>
+  list: (query?: { page?: number; size?: number; memberId?: number; staffId?: number; storeId?: number; status?: string }) =>
     request<ApiResult<PageResultRechargeResp>>(`${ADMIN}/recharge-applies`, { method: 'GET', query }),
   detail: (id: number) => request<ApiResult<RechargeResp>>(`${ADMIN}/recharge-applies/${id}`, { method: 'GET' }),
 };
 
 export const ConsumesApi = {
-  list: (query?: { page?: number; size?: number; memberId?: string; salesId?: number; shop?: string }) =>
+  list: (query?: { page?: number; size?: number; memberId?: number; staffId?: number; storeId?: number; status?: string }) =>
     request<ApiResult<PageResultConsumeRecordResp>>(`${ADMIN}/consume-records`, { method: 'GET', query }),
-  detail: (id: number) => request<ApiResult<ConsumeRecordResp>>(`${ADMIN}/consume-records/${id}`, { method: 'GET' }),
 };
 
 export const RoomsApi = {
@@ -94,6 +100,9 @@ export const BookingsApi = {
     request<ApiResult<PageResultReservationResp>>(`${ADMIN}/reservations`, { method: 'GET', query }),
   create: (body: ReservationCreateReq) => request<ApiResult<ReservationResp>>(`${ADMIN}/reservations`, { method: 'POST', body }),
   update: (id: number, body: ReservationCreateReq) => request<ApiResult<ReservationResp>>(`${ADMIN}/reservations/${id}`, { method: 'PUT', body }),
+  adminDirect: (body: AdminDirectReservationReq) =>
+    request<ApiResult<ReservationResp>>(`${ADMIN}/reservations/admin-direct`, { method: 'POST', body }),
+  detail: (id: number) => request<ApiResult<ReservationResp>>(`${ADMIN}/reservations/${id}`, { method: 'GET' }),
   cancel: (id: number, body: ReservationCancelReq) => request<ApiResult<void>>(`${ADMIN}/reservations/${id}/cancel`, { method: 'POST', body }),
 };
 

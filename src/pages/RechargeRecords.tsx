@@ -1,11 +1,12 @@
 import { useState, useMemo } from 'react';
 import { ChevronUp, ChevronDown, ChevronsUpDown, Search, Filter, Loader2 } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
-import { RechargesApi } from '@/services/admin';
+import { useQuery, useQueries } from '@tanstack/react-query';
+import { RechargesApi, SalespersonsApi } from '@/services/admin';
 import { RechargeResp } from '@/models';
 import ShopSelect from '@/components/ShopSelect';
 import SalesSelect from '@/components/SalesSelect';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Popover,
@@ -30,20 +31,50 @@ export default function RechargeRecords() {
 
   const { data: rechargeResp, isLoading } = useQuery({
     queryKey: ['recharges', page, size, memberSearch, selectedStore, selectedSales],
-    queryFn: () => RechargesApi.list({ 
-      page, 
+    queryFn: () => RechargesApi.list({
+      page,
       size,
-      memberId: memberSearch, // API might treat this as keyword search if implemented, or we need separate keyword param
-      shop: selectedStore ? String(selectedStore) : undefined, // API expects string name or ID? Check service. Assuming service handles mapping or we pass ID if API supports. 
-      // RechargesApi.list definition: memberId?: string; salesId?: number; shop?: string;
-      // We'll pass memberSearch to memberId for now, assuming backend search logic.
-      salesId: selectedSales,
+      storeId: selectedStore,
+      staffId: selectedSales,
     }),
   });
 
   const rechargeRecords = rechargeResp?.data?.list || [];
   const total = rechargeResp?.data?.total || 0;
   const totalPages = Math.ceil(total / size);
+
+  const staffIds = Array.from(
+    new Set(
+      rechargeRecords
+        .map((r) => r.staffId)
+        .filter((v): v is number => typeof v === 'number')
+    )
+  );
+  const reviewerIds = Array.from(
+    new Set(
+      rechargeRecords
+        .map((r) => r.reviewerId)
+        .filter((v): v is number => typeof v === 'number')
+    )
+  );
+  const uniqueIds = Array.from(new Set([...staffIds, ...reviewerIds]));
+  const staffQueries = useQueries({
+    queries: uniqueIds.map((id) => ({
+      queryKey: ['staff-detail', id],
+      queryFn: () => SalespersonsApi.detail(id),
+      enabled: !!id,
+    })),
+  });
+  const staffNameMap = useMemo(() => {
+    const map = new Map<number, string>();
+    staffQueries.forEach((q) => {
+      const s = q.data?.data;
+      if (s?.id && s?.name) {
+        map.set(s.id, s.name);
+      }
+    });
+    return map;
+  }, [staffQueries]);
 
   const handleSort = (key: keyof RechargeResp) => {
     if (sortKey === key) {
@@ -59,28 +90,31 @@ export default function RechargeRecords() {
     }
   };
 
-  const sortedRecords = useMemo(() => {
-    if (!sortKey || !sortDirection) {
-      return rechargeRecords;
-    }
+  const filteredRecords = useMemo(() => {
+    const q = memberSearch.trim().toLowerCase();
+    if (!q) return rechargeRecords;
+    return rechargeRecords.filter((r) => {
+      const fields = [r.memberName, r.cardNo, r.applyNo, String(r.memberId)];
+      return fields.some((f) => String(f || '').toLowerCase().includes(q));
+    });
+  }, [rechargeRecords, memberSearch]);
 
-    return [...rechargeRecords].sort((a, b) => {
+  const sortedRecords = useMemo(() => {
+    const data = filteredRecords;
+    if (!sortKey || !sortDirection) {
+      return data;
+    }
+    return [...data].sort((a, b) => {
       const aVal = a[sortKey];
       const bVal = b[sortKey];
-
       if (typeof aVal === 'number' && typeof bVal === 'number') {
         return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
       }
-
       const aStr = String(aVal || '').toLowerCase();
       const bStr = String(bVal || '').toLowerCase();
-
-      if (sortDirection === 'asc') {
-        return aStr.localeCompare(bStr);
-      }
-      return bStr.localeCompare(aStr);
+      return sortDirection === 'asc' ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr);
     });
-  }, [rechargeRecords, sortKey, sortDirection]);
+  }, [filteredRecords, sortKey, sortDirection]);
 
   const SortIcon = ({ columnKey }: { columnKey: keyof RechargeResp }) => {
     if (sortKey !== columnKey) {
@@ -94,16 +128,16 @@ export default function RechargeRecords() {
 
   const columns: { key: keyof RechargeResp; label: string }[] = [
     { key: 'createdAt', label: '日期' },
-    { key: 'memberId', label: '会员卡号' },
-    { key: 'cardTypeName', label: '卡类型' },
+    { key: 'applyNo', label: '申请单号' },
+    { key: 'cardNo', label: '会员卡号' },
     { key: 'memberName', label: '姓名' },
-    { key: 'phone', label: '手机号码' },
-    { key: 'idCard', label: '身份证号' },
     { key: 'amount', label: '充值金额' },
     { key: 'giftAmount', label: '赠送金额' },
-    { key: 'applyStaffName', label: '业务员' },
-    { key: 'storeName', label: '店铺' },
-    { key: 'remark', label: '备注' },
+    { key: 'staffId', label: '业务员' },
+    { key: 'status', label: '状态' },
+    { key: 'reviewerId', label: '审核人' },
+    { key: 'reviewedAt', label: '审核时间' },
+    { key: 'rejectReason', label: '驳回原因' },
   ];
 
   return (
@@ -204,39 +238,30 @@ export default function RechargeRecords() {
                     key={record.id}
                     className="border-b border-border hover:bg-muted/30 transition-colors"
                   >
+                    <td className="px-3 py-3 text-sm whitespace-nowrap">{record.createdAt}</td>
+                    <td className="px-3 py-3 text-sm font-mono whitespace-nowrap">{record.applyNo}</td>
+                    <td className="px-3 py-3 text-sm font-mono whitespace-nowrap">{record.cardNo}</td>
+                    <td className="px-3 py-3 text-sm whitespace-nowrap">{record.memberName}</td>
+                    <td className="px-3 py-3 text-sm font-medium text-green-600 whitespace-nowrap">+¥{(record.amount || 0).toLocaleString()}</td>
+                    <td className="px-3 py-3 text-sm font-medium text-blue-600 whitespace-nowrap">¥{(record.giftAmount || 0).toLocaleString()}</td>
+                    <td className="px-3 py-3 text-sm whitespace-nowrap">{staffNameMap.get(record.staffId as number) || record.staffId}</td>
                     <td className="px-3 py-3 text-sm whitespace-nowrap">
-                      {record.createdAt?.split('T')[0]}
+                      {(() => {
+                        const s = String(record.status || '');
+                        const map: Record<string, { text: string; cls: string }> = {
+                          PENDING: { text: '待审核', cls: 'bg-gray-100 text-gray-700' },
+                          APPROVED: { text: '已通过', cls: 'bg-green-100 text-green-700' },
+                          REJECTED: { text: '已拒绝', cls: 'bg-red-100 text-red-700' },
+                          CANCELLED: { text: '已取消', cls: 'bg-orange-100 text-orange-700' },
+                          VOID: { text: '已作废', cls: 'bg-muted text-muted-foreground' },
+                        };
+                        const m = map[s] || { text: s || '-', cls: 'bg-muted text-muted-foreground' };
+                        return <Badge className={m.cls}>{m.text}</Badge>;
+                      })()}
                     </td>
-                    <td className="px-3 py-3 text-sm font-mono whitespace-nowrap">
-                      {record.memberId}
-                    </td>
-                    <td className="px-3 py-3 text-sm whitespace-nowrap">
-                      {record.cardTypeName}
-                    </td>
-                    <td className="px-3 py-3 text-sm whitespace-nowrap">
-                      {record.memberName}
-                    </td>
-                    <td className="px-3 py-3 text-sm whitespace-nowrap">
-                      {record.phone}
-                    </td>
-                    <td className="px-3 py-3 text-sm font-mono whitespace-nowrap">
-                      {record.idCard}
-                    </td>
-                    <td className="px-3 py-3 text-sm font-medium text-green-600 whitespace-nowrap">
-                      +¥{(record.amount || 0).toLocaleString()}
-                    </td>
-                    <td className="px-3 py-3 text-sm font-medium text-blue-600 whitespace-nowrap">
-                      ¥{(record.giftAmount || 0).toLocaleString()}
-                    </td>
-                    <td className="px-3 py-3 text-sm whitespace-nowrap">
-                      {record.applyStaffName}
-                    </td>
-                    <td className="px-3 py-3 text-sm whitespace-nowrap">
-                      {record.storeName}
-                    </td>
-                    <td className="px-3 py-3 text-sm text-muted-foreground">
-                      {record.remark || '-'}
-                    </td>
+                    <td className="px-3 py-3 text-sm whitespace-nowrap">{(record.reviewerId && staffNameMap.get(record.reviewerId as number)) || record.reviewerId || '-'}</td>
+                    <td className="px-3 py-3 text-sm whitespace-nowrap">{record.reviewedAt ?? '-'}</td>
+                    <td className="px-3 py-3 text-sm text-muted-foreground">{record.rejectReason || '-'}</td>
                   </tr>
                 ))
               )}

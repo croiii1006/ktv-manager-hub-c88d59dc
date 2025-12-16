@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Plus, Edit2, Trash2, KeyRound, Power, Eye, Loader2 } from 'lucide-react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, useQueries } from '@tanstack/react-query';
 import { SalespersonsApi, RechargesApi, ConsumesApi, StoresApi, TeamLeadersApi } from '@/services/admin';
 import { StaffResp, StaffCreateReq, StaffUpdateReq, StaffRespRoleEnum } from '@/models';
 import ShopSelect from '@/components/ShopSelect';
@@ -39,6 +39,7 @@ export default function SalespersonManagement() {
   
   const [modalType, setModalType] = useState<'recharge' | 'consume' | null>(null);
   const [consumeDetailId, setConsumeDetailId] = useState<number | null>(null);
+  const [rechargeDetailId, setRechargeDetailId] = useState<number | null>(null);
   
   // Pagination state
   const [page, setPage] = useState(1);
@@ -165,25 +166,40 @@ export default function SalespersonManagement() {
   // Fetch records for selected salesperson
   const { data: rechargeResp } = useQuery({
     queryKey: ['recharges', selectedSales?.id],
-    queryFn: () => RechargesApi.list({ salesId: selectedSales?.id, page: 1, size: 20 }),
+    queryFn: () => RechargesApi.list({ staffId: selectedSales?.id, page: 1, size: 20 }),
     enabled: !!selectedSales && modalType === 'recharge',
   });
 
   const { data: consumeResp } = useQuery({
     queryKey: ['consumes', selectedSales?.id],
-    queryFn: () => ConsumesApi.list({ salesId: selectedSales?.id, page: 1, size: 20 }),
+    queryFn: () => ConsumesApi.list({ staffId: selectedSales?.id, page: 1, size: 20 }),
     enabled: !!selectedSales && modalType === 'consume',
-  });
-  
-  const { data: consumeDetailResp } = useQuery({
-    queryKey: ['consume-detail', consumeDetailId],
-    queryFn: () => ConsumesApi.detail(consumeDetailId!),
-    enabled: !!consumeDetailId,
   });
 
   const salesRechargeRecords = rechargeResp?.data?.list || [];
   const salesConsumeRecords = consumeResp?.data?.list || [];
-  const selectedConsumeDetail = consumeDetailResp?.data;
+  const selectedConsumeDetail = salesConsumeRecords.find(r => r.id === consumeDetailId);
+  const { data: rechargeDetailResp } = useQuery({
+    queryKey: ['recharge-detail', rechargeDetailId],
+    queryFn: () => RechargesApi.detail(rechargeDetailId!),
+    enabled: !!rechargeDetailId,
+  });
+  const reviewerIds = Array.from(new Set([
+    ...salesRechargeRecords.map(r => r.reviewerId).filter((v): v is number => typeof v === 'number'),
+    ...salesConsumeRecords.map(r => r.reviewerId).filter((v): v is number => typeof v === 'number'),
+  ]));
+  const reviewerQueries = useQueries({
+    queries: reviewerIds.map((id) => ({
+      queryKey: ['staff-detail', id],
+      queryFn: () => SalespersonsApi.detail(id),
+      enabled: !!id,
+    })),
+  });
+  const reviewerNameMap = new Map<number, string>();
+  reviewerQueries.forEach((q) => {
+    const s = q.data?.data;
+    if (s?.id && s?.name) reviewerNameMap.set(s.id, s.name);
+  });
 
   return (
     <div className="space-y-4">
@@ -547,15 +563,15 @@ export default function SalespersonManagement() {
           setSelectedSales(null);
         }}
       >
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-auto">
+        <DialogContent className="max-w-5xl max-h-[80vh] overflow-auto">
           <DialogHeader>
             <DialogTitle className="flex justify-between items-center">
               <span>
                 {selectedSales?.id} {selectedSales?.name}
               </span>
-              <span className="text-sm font-normal text-muted-foreground">
+              {/* <span className="text-sm font-normal text-muted-foreground">
                 {selectedSales?.storeId}
-              </span>
+              </span> */}
             </DialogTitle>
           </DialogHeader>
           <div>
@@ -563,30 +579,23 @@ export default function SalespersonManagement() {
             <table className="w-full border border-border rounded-md">
               <thead>
                 <tr className="bg-muted/50">
-                  <th className="px-3 py-2 text-left text-sm font-medium">
-                    日期
-                  </th>
-                  <th className="px-3 py-2 text-left text-sm font-medium">
-                    金额
-                  </th>
-                  <th className="px-3 py-2 text-left text-sm font-medium">
-                    客户编号
-                  </th>
-                  <th className="px-3 py-2 text-left text-sm font-medium">
-                    客户名字
-                  </th>
-                  <th className="px-3 py-2 text-left text-sm font-medium">
-                    备注
-                  </th>
+                  <th className="px-3 py-2 text-left text-sm font-medium">日期</th>
+                  <th className="px-3 py-2 text-left text-sm font-medium">申请单号</th>
+                  <th className="px-3 py-2 text-left text-sm font-medium">会员卡号</th>
+                  <th className="px-3 py-2 text-left text-sm font-medium">姓名</th>
+                  <th className="px-3 py-2 text-left text-sm font-medium">充值金额</th>
+                  <th className="px-3 py-2 text-left text-sm font-medium">赠送金额</th>
+                  <th className="px-3 py-2 text-left text-sm font-medium">业务员</th>
+                  <th className="px-3 py-2 text-left text-sm font-medium">状态</th>
+                  <th className="px-3 py-2 text-left text-sm font-medium">审核人</th>
+                  <th className="px-3 py-2 text-left text-sm font-medium">审核时间</th>
+                  <th className="px-3 py-2 text-left text-sm font-medium">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {salesRechargeRecords.length === 0 ? (
                   <tr>
-                    <td
-                      colSpan={5}
-                      className="px-3 py-4 text-center text-muted-foreground"
-                    >
+                    <td colSpan={11} className="px-3 py-4 text-center text-muted-foreground">
                       暂无充值记录
                     </td>
                   </tr>
@@ -594,15 +603,30 @@ export default function SalespersonManagement() {
                   salesRechargeRecords.map((record) => (
                     <tr key={record.id} className="border-t border-border">
                       <td className="px-3 py-2 text-sm">{record.createdAt}</td>
-                      <td className="px-3 py-2 text-sm font-medium text-green-600">
-                        +{record.amount}
-                      </td>
-                      <td className="px-3 py-2 text-sm font-mono">
-                        {record.memberId}
-                      </td>
+                      <td className="px-3 py-2 text-sm font-mono">{record.applyNo}</td>
+                      <td className="px-3 py-2 text-sm font-mono">{record.cardNo}</td>
                       <td className="px-3 py-2 text-sm">{record.memberName}</td>
-                      <td className="px-3 py-2 text-sm text-muted-foreground">
-                        {record.remark || '-'}
+                      <td className="px-3 py-2 text-sm font-medium text-green-600">+{record.amount}</td>
+                      <td className="px-3 py-2 text-sm font-medium text-blue-600">{record.giftAmount}</td>
+                      <td className="px-3 py-2 text-sm">{selectedSales?.name || record.staffId}</td>
+                      <td className="px-3 py-2 text-sm">
+                        {(() => {
+                          const s = String(record.status || '');
+                          const map: Record<string, { text: string; cls: string }> = {
+                            PENDING: { text: '待审核', cls: 'bg-gray-100 text-gray-700' },
+                            APPROVED: { text: '已通过', cls: 'bg-green-100 text-green-700' },
+                            REJECTED: { text: '已拒绝', cls: 'bg-red-100 text-red-700' },
+                            CANCELLED: { text: '已取消', cls: 'bg-orange-100 text-orange-700' },
+                            VOID: { text: '已作废', cls: 'bg-muted text-muted-foreground' },
+                          };
+                          const m = map[s] || { text: s || '-', cls: 'bg-muted text-muted-foreground' };
+                          return <Badge className={m.cls}>{m.text}</Badge>;
+                        })()}
+                      </td>
+                      <td className="px-3 py-2 text-sm">{(record.reviewerId && reviewerNameMap.get(record.reviewerId as number)) || record.reviewerId || '-'}</td>
+                      <td className="px-3 py-2 text-sm">{record.reviewedAt || '-'}</td>
+                      <td className="px-3 py-2">
+                        <Button variant="outline" size="sm" onClick={() => record.id && setRechargeDetailId(record.id)}>详情</Button>
                       </td>
                     </tr>
                   ))
@@ -610,6 +634,37 @@ export default function SalespersonManagement() {
               </tbody>
             </table>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!rechargeDetailId} onOpenChange={() => setRechargeDetailId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>充值详情</DialogTitle>
+          </DialogHeader>
+          {rechargeDetailResp?.data && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div><span className="text-muted-foreground">申请单号：</span><span className="font-mono">{rechargeDetailResp.data.applyNo}</span></div>
+                <div><span className="text-muted-foreground">会员卡号：</span><span className="font-mono">{rechargeDetailResp.data.cardNo}</span></div>
+                <div><span className="text-muted-foreground">客户姓名：</span>{rechargeDetailResp.data.memberName}</div>
+                <div><span className="text-muted-foreground">充值金额：</span>+{rechargeDetailResp.data.amount}</div>
+                <div><span className="text-muted-foreground">赠送金额：</span>{rechargeDetailResp.data.giftAmount}</div>
+                <div><span className="text-muted-foreground">业务员：</span>{selectedSales?.name || rechargeDetailResp.data.staffId}</div>
+                <div><span className="text-muted-foreground">状态：</span>{(() => {
+                  const s = String(rechargeDetailResp.data.status || '');
+                  const map: Record<string, string> = { PENDING: '待审核', APPROVED: '已通过', REJECTED: '已拒绝', CANCELLED: '已取消', VOID: '已作废' };
+                  return map[s] || s || '-';
+                })()}</div>
+                <div><span className="text-muted-foreground">审核人：</span>{(rechargeDetailResp.data.reviewerId && reviewerNameMap.get(rechargeDetailResp.data.reviewerId as number)) || rechargeDetailResp.data.reviewerId || '-'}</div>
+                <div><span className="text-muted-foreground">审核时间：</span>{rechargeDetailResp.data.reviewedAt || '-'}</div>
+                <div className="col-span-2"><span className="text-muted-foreground">驳回原因：</span>{rechargeDetailResp.data.rejectReason || '-'}</div>
+              </div>
+              <div className="flex justify-end">
+                <Button variant="outline" onClick={() => setRechargeDetailId(null)}>关闭</Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -627,9 +682,9 @@ export default function SalespersonManagement() {
               <span>
                 {selectedSales?.id} {selectedSales?.name}
               </span>
-              <span className="text-sm font-normal text-muted-foreground">
+              {/* <span className="text-sm font-normal text-muted-foreground">
                 {selectedSales?.storeId}
-              </span>
+              </span> */}
             </DialogTitle>
           </DialogHeader>
           <div>
@@ -637,30 +692,20 @@ export default function SalespersonManagement() {
             <table className="w-full border border-border rounded-md">
               <thead>
                 <tr className="bg-muted/50">
-                  <th className="px-3 py-2 text-left text-sm font-medium">
-                    日期
-                  </th>
-                  <th className="px-3 py-2 text-left text-sm font-medium">
-                    金额
-                  </th>
-                  <th className="px-3 py-2 text-left text-sm font-medium">
-                    客户编号
-                  </th>
-                  <th className="px-3 py-2 text-left text-sm font-medium">
-                    客户名字
-                  </th>
-                  <th className="px-3 py-2 text-left text-sm font-medium">
-                    操作
-                  </th>
+                  <th className="px-3 py-2 text-left text-sm font-medium">日期</th>
+                  <th className="px-3 py-2 text-left text-sm font-medium">消费单号</th>
+                  <th className="px-3 py-2 text-left text-sm font-medium">会员卡号</th>
+                  <th className="px-3 py-2 text-left text-sm font-medium">姓名</th>
+                  <th className="px-3 py-2 text-left text-sm font-medium">消费金额</th>
+                  <th className="px-3 py-2 text-left text-sm font-medium">状态</th>
+                  <th className="px-3 py-2 text-left text-sm font-medium">审核人</th>
+                  <th className="px-3 py-2 text-left text-sm font-medium">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {salesConsumeRecords.length === 0 ? (
                   <tr>
-                    <td
-                      colSpan={6}
-                      className="px-3 py-4 text-center text-muted-foreground"
-                    >
+                    <td colSpan={8} className="px-3 py-4 text-center text-muted-foreground">
                       暂无消费记录
                     </td>
                   </tr>
@@ -668,13 +713,25 @@ export default function SalespersonManagement() {
                   salesConsumeRecords.map((record) => (
                     <tr key={record.id} className="border-t border-border">
                       <td className="px-3 py-2 text-sm">{record.createdAt}</td>
-                      <td className="px-3 py-2 text-sm font-medium text-red-600">
-                        {record.consumeAmount}
-                      </td>
-                      <td className="px-3 py-2 text-sm font-mono">
-                        {record.memberId}
-                      </td>
+                      <td className="px-3 py-2 text-sm font-mono">{record.consumeNo}</td>
+                      <td className="px-3 py-2 text-sm font-mono">{record.cardNo}</td>
                       <td className="px-3 py-2 text-sm">{record.memberName}</td>
+                      <td className="px-3 py-2 text-sm font-medium text-red-600">{record.consumeAmount}</td>
+                      <td className="px-3 py-2 text-sm">
+                        {(() => {
+                          const s = String(record.status || '');
+                          const map: Record<string, { text: string; cls: string }> = {
+                            PENDING: { text: '待审核', cls: 'bg-gray-100 text-gray-700' },
+                            APPROVED: { text: '已通过', cls: 'bg-green-100 text-green-700' },
+                            REJECTED: { text: '已拒绝', cls: 'bg-red-100 text-red-700' },
+                            CANCELLED: { text: '已取消', cls: 'bg-orange-100 text-orange-700' },
+                            VOID: { text: '已作废', cls: 'bg-muted text-muted-foreground' },
+                          };
+                          const m = map[s] || { text: s || '-', cls: 'bg-muted text-muted-foreground' };
+                          return <Badge className={m.cls}>{m.text}</Badge>;
+                        })()}
+                      </td>
+                      <td className="px-3 py-2 text-sm">{(record.reviewerId && reviewerNameMap.get(record.reviewerId as number)) || record.reviewerId || '-'}</td>
                       <td className="px-3 py-2">
                         <Button
                           variant="outline"
@@ -705,33 +762,21 @@ export default function SalespersonManagement() {
           {selectedConsumeDetail && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-muted-foreground">客户名字：</span>
-                  <span className="font-medium">
-                    {selectedConsumeDetail.memberName}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">客户编号：</span>
-                  <span className="font-mono">
-                    {selectedConsumeDetail.memberId}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">消费店铺：</span>
-                  <span>{selectedConsumeDetail.storeName}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">房号：</span>
-                  <span>{selectedConsumeDetail.roomNo || '-'}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">业务员：</span>
-                  <span>
-                    {selectedConsumeDetail.applyStaffName}{' '}
-                    {selectedConsumeDetail.applyStaffId}
-                  </span>
-                </div>
+                <div><span className="text-muted-foreground">消费单号：</span><span className="font-mono">{selectedConsumeDetail.consumeNo}</span></div>
+                <div><span className="text-muted-foreground">会员卡号：</span><span className="font-mono">{selectedConsumeDetail.cardNo}</span></div>
+                <div><span className="text-muted-foreground">客户名字：</span><span className="font-medium">{selectedConsumeDetail.memberName}</span></div>
+                <div><span className="text-muted-foreground">卡类型：</span>{selectedConsumeDetail.cardTypeName}</div>
+                <div><span className="text-muted-foreground">消费金额：</span>{selectedConsumeDetail.consumeAmount}</div>
+                <div><span className="text-muted-foreground">余额：</span>{selectedConsumeDetail.balance}</div>
+                <div><span className="text-muted-foreground">赠送余额：</span>{selectedConsumeDetail.giftBalance}</div>
+                <div><span className="text-muted-foreground">店铺：</span>{selectedConsumeDetail.storeName}</div>
+                <div><span className="text-muted-foreground">房号：</span>{selectedConsumeDetail.roomNo || '-'}</div>
+                <div><span className="text-muted-foreground">房间名：</span>{selectedConsumeDetail.roomName || '-'}</div>
+                <div><span className="text-muted-foreground">业务员：</span>{selectedConsumeDetail.applyStaffName} {selectedConsumeDetail.applyStaffId}</div>
+                <div><span className="text-muted-foreground">接待业务员：</span>{selectedConsumeDetail.receptionStaffName || '-'} {selectedConsumeDetail.receptionStaffId || ''}</div>
+                <div><span className="text-muted-foreground">状态：</span>{(() => { const m: Record<string, string> = { PENDING: '待审核', APPROVED: '已通过', REJECTED: '已拒绝', CANCELLED: '已取消', VOID: '已作废' }; const s = String(selectedConsumeDetail.status || ''); return m[s] || s || '-'; })()}</div>
+                <div><span className="text-muted-foreground">审核人：</span>{(selectedConsumeDetail.reviewerId && reviewerNameMap.get(selectedConsumeDetail.reviewerId as number)) || selectedConsumeDetail.reviewerId || '-'}</div>
+                <div><span className="text-muted-foreground">审核时间：</span>{selectedConsumeDetail.reviewedAt || '-'}</div>
               </div>
               <div className="flex justify-end">
                 <Button

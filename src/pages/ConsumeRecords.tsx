@@ -1,11 +1,12 @@
 import { useState, useMemo } from 'react';
 import { ChevronUp, ChevronDown, ChevronsUpDown, Image, Search, Filter, Loader2 } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
-import { ConsumesApi } from '@/services/admin';
+import { useQuery, useQueries } from '@tanstack/react-query';
+import { ConsumesApi, SalespersonsApi } from '@/services/admin';
 import { ConsumeRecordResp } from '@/models';
 import ShopSelect from '@/components/ShopSelect';
 import SalesSelect from '@/components/SalesSelect';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Dialog,
@@ -37,12 +38,11 @@ export default function ConsumeRecords() {
 
   const { data: consumeResp, isLoading } = useQuery({
     queryKey: ['consumes', page, size, memberSearch, selectedStore, selectedSales],
-    queryFn: () => ConsumesApi.list({ 
-      page, 
+    queryFn: () => ConsumesApi.list({
+      page,
       size,
-      memberId: memberSearch,
-      shop: selectedStore ? String(selectedStore) : undefined,
-      salesId: selectedSales,
+      storeId: selectedStore,
+      staffId: selectedSales,
     }),
   });
 
@@ -64,12 +64,22 @@ export default function ConsumeRecords() {
     }
   };
 
+  const filteredRecords = useMemo(() => {
+    const q = memberSearch.trim().toLowerCase();
+    if (!q) return consumeRecords;
+    return consumeRecords.filter((r) => {
+      const fields = [r.memberName, r.cardNo, r.consumeNo, String(r.memberId), r.phone];
+      return fields.some((f) => String(f || '').toLowerCase().includes(q));
+    });
+  }, [consumeRecords, memberSearch]);
+
   const sortedRecords = useMemo(() => {
+    const data = filteredRecords;
     if (!sortKey || !sortDirection) {
-      return consumeRecords;
+      return data;
     }
 
-    return [...consumeRecords].sort((a, b) => {
+    return [...data].sort((a, b) => {
       const aVal = a[sortKey];
       const bVal = b[sortKey];
 
@@ -85,7 +95,32 @@ export default function ConsumeRecords() {
       }
       return bStr.localeCompare(aStr);
     });
-  }, [consumeRecords, sortKey, sortDirection]);
+  }, [filteredRecords, sortKey, sortDirection]);
+
+  const reviewerIds = Array.from(
+    new Set(
+      consumeRecords
+        .map((r) => r.reviewerId)
+        .filter((v): v is number => typeof v === 'number')
+    )
+  );
+  const reviewerQueries = useQueries({
+    queries: reviewerIds.map((id) => ({
+      queryKey: ['staff-detail', id],
+      queryFn: () => SalespersonsApi.detail(id),
+      enabled: !!id,
+    })),
+  });
+  const reviewerNameMap = useMemo(() => {
+    const map = new Map<number, string>();
+    reviewerQueries.forEach((q) => {
+      const s = q.data?.data;
+      if (s?.id && s?.name) {
+        map.set(s.id, s.name);
+      }
+    });
+    return map;
+  }, [reviewerQueries]);
 
   const SortIcon = ({ columnKey }: { columnKey: keyof ConsumeRecordResp }) => {
     if (sortKey !== columnKey) {
@@ -99,17 +134,19 @@ export default function ConsumeRecords() {
 
   const columns: { key: keyof ConsumeRecordResp; label: string }[] = [
     { key: 'createdAt', label: '日期' },
-    { key: 'memberId', label: '会员卡号' },
-    { key: 'cardTypeName', label: '卡类型' },
+    { key: 'consumeNo', label: '消费单号' },
+    { key: 'cardNo', label: '会员卡号' },
     { key: 'memberName', label: '姓名' },
-    { key: 'phone', label: '手机号码' },
-    { key: 'idCard', label: '身份证号' },
+    { key: 'cardTypeName', label: '卡类型' },
     { key: 'consumeAmount', label: '消费金额' },
     { key: 'balance', label: '余额' },
     { key: 'applyStaffName', label: '业务员' },
     { key: 'receptionStaffName', label: '接待业务员' },
     { key: 'storeName', label: '店铺' },
     { key: 'roomNo', label: '房间号' },
+    { key: 'status', label: '状态' },
+    { key: 'reviewerId', label: '审核人' },
+    { key: 'reviewedAt', label: '审核时间' },
     { key: 'remark', label: '备注' },
   ];
 
@@ -211,45 +248,34 @@ export default function ConsumeRecords() {
                     key={record.id}
                     className="border-b border-border hover:bg-muted/30 transition-colors"
                   >
+                    <td className="px-3 py-3 text-sm whitespace-nowrap">{record.createdAt}</td>
+                    <td className="px-3 py-3 text-sm font-mono whitespace-nowrap">{record.consumeNo}</td>
+                    <td className="px-3 py-3 text-sm font-mono whitespace-nowrap">{record.cardNo}</td>
+                    <td className="px-3 py-3 text-sm whitespace-nowrap">{record.memberName}</td>
+                    <td className="px-3 py-3 text-sm whitespace-nowrap">{record.cardTypeName}</td>
+                    <td className="px-3 py-3 text-sm font-medium text-red-600 whitespace-nowrap">¥{(record.consumeAmount || 0).toLocaleString()}</td>
+                    <td className="px-3 py-3 text-sm whitespace-nowrap">¥{(record.balance || 0).toLocaleString()}</td>
+                    <td className="px-3 py-3 text-sm whitespace-nowrap">{record.applyStaffName}</td>
+                    <td className="px-3 py-3 text-sm whitespace-nowrap">{record.receptionStaffName || '-'}</td>
+                    <td className="px-3 py-3 text-sm whitespace-nowrap">{record.storeName}</td>
+                    <td className="px-3 py-3 text-sm whitespace-nowrap">{record.roomNo || '-'}</td>
                     <td className="px-3 py-3 text-sm whitespace-nowrap">
-                      {record.createdAt?.split('T')[0]}
+                      {(() => {
+                        const s = String(record.status || '');
+                        const map: Record<string, { text: string; cls: string }> = {
+                          PENDING: { text: '待审核', cls: 'bg-gray-100 text-gray-700' },
+                          APPROVED: { text: '已通过', cls: 'bg-green-100 text-green-700' },
+                          REJECTED: { text: '已拒绝', cls: 'bg-red-100 text-red-700' },
+                          CANCELLED: { text: '已取消', cls: 'bg-orange-100 text-orange-700' },
+                          VOID: { text: '已作废', cls: 'bg-muted text-muted-foreground' },
+                        };
+                        const m = map[s] || { text: s || '-', cls: 'bg-muted text-muted-foreground' };
+                        return <Badge className={m.cls}>{m.text}</Badge>;
+                      })()}
                     </td>
-                    <td className="px-3 py-3 text-sm font-mono whitespace-nowrap">
-                      {record.memberId}
-                    </td>
-                    <td className="px-3 py-3 text-sm whitespace-nowrap">
-                      {record.cardTypeName}
-                    </td>
-                    <td className="px-3 py-3 text-sm whitespace-nowrap">
-                      {record.memberName}
-                    </td>
-                    <td className="px-3 py-3 text-sm whitespace-nowrap">
-                      {record.phone}
-                    </td>
-                    <td className="px-3 py-3 text-sm font-mono whitespace-nowrap">
-                      {record.idCard}
-                    </td>
-                    <td className="px-3 py-3 text-sm font-medium text-red-600 whitespace-nowrap">
-                      ¥{(record.consumeAmount || 0).toLocaleString()}
-                    </td>
-                    <td className="px-3 py-3 text-sm whitespace-nowrap">
-                      ¥{(record.balance || 0).toLocaleString()}
-                    </td>
-                    <td className="px-3 py-3 text-sm whitespace-nowrap">
-                      {record.applyStaffName}
-                    </td>
-                    <td className="px-3 py-3 text-sm whitespace-nowrap">
-                      {record.receptionStaffName || '-'}
-                    </td>
-                    <td className="px-3 py-3 text-sm whitespace-nowrap">
-                      {record.storeName}
-                    </td>
-                    <td className="px-3 py-3 text-sm whitespace-nowrap">
-                      {record.roomNo || '-'}
-                    </td>
-                    <td className="px-3 py-3 text-sm text-muted-foreground">
-                      {record.remark || '-'}
-                    </td>
+                    <td className="px-3 py-3 text-sm whitespace-nowrap">{(record.reviewerId && reviewerNameMap.get(record.reviewerId as number)) || record.reviewerId || '-'}</td>
+                    <td className="px-3 py-3 text-sm whitespace-nowrap">{record.reviewedAt || '-'}</td>
+                    <td className="px-3 py-3 text-sm text-muted-foreground">{record.remark || '-'}</td>
                   </tr>
                 ))
               )}
