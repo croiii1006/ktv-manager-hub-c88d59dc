@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient, useQueries } from '@tanstack/rea
 import { MembersApi, RechargesApi, ConsumesApi, SalespersonsApi, MemberBindingsApi } from '@/services/admin';
 import { MemberResp, MemberReq, RechargeApplyCreateReq, MemberBindingReq } from '@/models';
 import SalesSelect from '@/components/SalesSelect';
-import { CARD_TYPES, CARD_TYPE_THRESHOLDS } from '@/types';
+import { CARD_TYPES, CARD_TYPE_THRESHOLDS, calculateCardType } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -194,8 +194,18 @@ export default function UserManagement() {
           return MemberBindingsApi.create(req);
        }
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['members'] });
+      if (variables?.memberId) {
+        queryClient.invalidateQueries({ queryKey: ['member-binding', variables.memberId] });
+      }
+      if (variables?.salesId) {
+        queryClient.invalidateQueries({ queryKey: ['staff-detail', variables.salesId] });
+      }
+      // Update current selection for instantaneous UI feedback
+      setSelectedMember((prev) => (
+        prev ? { ...prev, salesId: variables?.salesId, salesName: (variables?.salesId ? (salesMap.get(variables.salesId) || prev.salesName) : prev.salesName) } : prev
+      ));
       toast.success('绑定成功');
       setBindModalOpen(false);
     },
@@ -368,12 +378,12 @@ export default function UserManagement() {
                   key={member.id}
                   className="border-b border-border hover:bg-muted/30 transition-colors"
                 >
-                  <td className="px-3 py-3 text-sm font-mono text-foreground">{member.id}</td>
+                  <td className="px-3 py-3 text-sm font-mono text-foreground">{member.cardNo || member.id}</td>
                   <td className="px-3 py-3 text-sm">{member.name}</td>
                   <td className="px-3 py-3 text-sm">{member.phone}</td>
-                  <td className="px-3 py-3 text-sm">{member.cardType}</td>
+                  <td className="px-3 py-3 text-sm">{member.cardTypeName || calculateCardType(member.totalRecharge || 0)}</td>
                   <td className="px-3 py-3 text-sm">{member.idCard || '-'}</td>
-                  <td className="px-3 py-3 text-sm">{member.createdAt?.split('T')[0]}</td>
+                  <td className="px-3 py-3 text-sm">{member.createdAt ? member.createdAt.split('T')[0].split(' ')[0] : '-'}</td>
                   <td className="px-3 py-3 text-sm font-medium text-green-600">¥{(member.balance || 0).toLocaleString()}</td>
                   <td className="px-3 py-3 text-sm font-medium text-blue-600">¥{(member.giftBalance || 0).toLocaleString()}</td>
                   <td className="px-3 py-3 text-sm">
@@ -627,7 +637,7 @@ export default function UserManagement() {
                 </div>
                 <div>
                   <span className="text-muted-foreground">当前卡类型：</span>
-                  <span className="font-medium">{selectedMember?.cardType}</span>
+                  <span className="font-medium">{selectedMember?.cardTypeName || calculateCardType(selectedMember?.totalRecharge || 0)}</span>
                 </div>
               </div>
             </div>
@@ -759,9 +769,9 @@ export default function UserManagement() {
               </div>
               <div className="mt-2 text-sm">
                 当前累计充值：<span className="font-medium text-green-600">
-                  ¥{(selectedMember?.balance || 0).toLocaleString()} 
+                  ¥{(selectedMember?.totalRecharge || 0).toLocaleString()} 
                 </span>
-                ，卡类型：<span className="font-medium">{selectedMember?.cardType}</span>
+                ，卡类型：<span className="font-medium">{selectedMember?.cardTypeName || calculateCardType(selectedMember?.totalRecharge || 0)}</span>
               </div>
             </div>
 

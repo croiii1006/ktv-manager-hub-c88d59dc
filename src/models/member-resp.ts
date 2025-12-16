@@ -32,6 +32,12 @@ export interface MemberResp {
      */
     cardTypeId?: number;
     /**
+     * 卡类型名称
+     * @type {string}
+     * @memberof MemberResp
+     */
+    cardTypeName?: string;
+    /**
      * 会员卡号
      * @type {string}
      * @memberof MemberResp
@@ -110,5 +116,4 @@ export interface MemberResp {
      */
     updatedAt?: string;
 }
-
 
