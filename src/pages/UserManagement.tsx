@@ -755,7 +755,7 @@ export default function UserManagement() {
           </DialogHeader>
           <div className="space-y-6">
             {/* Card Type Info */}
-            <div className="bg-muted/30 p-4 rounded-md">
+            {/* <div className="bg-muted/30 p-4 rounded-md">
               <h4 className="text-sm font-medium mb-2">卡类型等级说明</h4>
               <div className="grid grid-cols-5 gap-2 text-xs">
                 {CARD_TYPE_THRESHOLDS.map((t) => (
@@ -773,7 +773,7 @@ export default function UserManagement() {
                 </span>
                 ，卡类型：<span className="font-medium">{selectedMember?.cardTypeName || calculateCardType(selectedMember?.totalRecharge || 0)}</span>
               </div>
-            </div>
+            </div> */}
 
             {/* Recharge Records */}
             <div>

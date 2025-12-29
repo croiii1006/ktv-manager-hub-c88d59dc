@@ -103,7 +103,7 @@ export interface RoomBooking {
 }
 
 export const SHOPS = ['上海店', '武汉店'];
-export const CARD_TYPES = ['非会员', '白金卡', '黄金卡', '铂金卡', '黑钻卡'];
+export const CARD_TYPES = ['非会员', '普通卡', '白金卡', '黄金卡', '铂金卡', '黑钻卡'];
 export const ROOM_TYPES = ['至尊', '大包', '中包', '小包'];
 export const PAYMENT_METHODS = ['现金', '余额', '赠送余额', '团购'];
 
@@ -113,6 +113,7 @@ export const CARD_TYPE_THRESHOLDS = [
   { type: '铂金卡', minAmount: 20000 },
   { type: '黄金卡', minAmount: 10000 },
   { type: '白金卡', minAmount: 5000 },
+  // { type: '普通卡', minAmount: 0 },
   { type: '非会员', minAmount: 0 },
 ];
 
