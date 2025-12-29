@@ -75,12 +75,42 @@ export interface ConsumeRecord {
   paymentVoucher?: string;
 }
 
+export interface MemberPricing {
+  goldCard: number;
+  platinumCard: number;
+  purpleDiamond: number;
+  blackDiamond: number;
+}
+
+export interface TimeSlotPricing {
+  standardPrice: number;
+  groupBuyPrice: number;
+  memberPricing: MemberPricing;
+}
+
+export interface RoomConfig {
+  id: string;
+  roomName: string;
+  category: 'flagship' | 'supreme' | 'luxury' | 'large';
+  description: string;
+  daytime6h: TimeSlotPricing;
+  daytime3h: TimeSlotPricing;
+  isActive: boolean;
+}
+
 export interface Room {
   roomNumber: string;
   roomType: string;
   shop: string;
   price: number;
 }
+
+export const ROOM_CATEGORIES = [
+  { value: 'flagship', label: '旗舰' },
+  { value: 'supreme', label: '至尊' },
+  { value: 'luxury', label: '豪华' },
+  { value: 'large', label: '大包' },
+] as const;
 
 export interface RoomBooking {
   id: string;
