@@ -7,6 +7,7 @@ import UserManagement from './UserManagement';
 import RechargeRecords from './RechargeRecords';
 import ConsumeRecords from './ConsumeRecords';
 import RoomBooking from './RoomBooking';
+import RoomManagement from './RoomManagement';
 
 const Index = () => {
   const [currentPage, setCurrentPage] = useState('team-leaders');
@@ -25,6 +26,8 @@ const Index = () => {
         return <ConsumeRecords />;
       case 'rooms':
         return <RoomBooking />;
+      case 'room-management':
+        return <RoomManagement />;
       default:
         return <TeamLeaderManagement />;
     }

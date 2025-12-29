@@ -1,4 +1,4 @@
-import { Users, UserCog, CreditCard, Receipt, DollarSign, Calendar } from 'lucide-react';
+import { Users, UserCog, CreditCard, Receipt, DollarSign, Calendar, Home } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface SidebarProps {
@@ -13,6 +13,7 @@ const menuItems = [
   { id: 'recharge', label: '充值记录', icon: DollarSign },
   { id: 'consume', label: '消费记录', icon: Receipt },
   { id: 'rooms', label: '订房情况', icon: Calendar },
+  { id: 'room-management', label: '房间管理', icon: Home },
 ];
 
 export default function Sidebar({ currentPage, onPageChange }: SidebarProps) {
