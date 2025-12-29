@@ -88,6 +88,42 @@ export interface TimeSlotPricing {
   memberPricing: MemberPricing;
 }
 
+// Wuhan Store: Time-slot based pricing (simpler structure)
+export interface WuhanTimeSlotPricing {
+  standardPrice: number;
+  groupBuyPrice: number;
+  memberPrice: number;
+}
+
+export interface WuhanRoomConfig {
+  id: string;
+  roomName: string;
+  category: 'flagship' | 'supreme' | 'luxury' | 'large';
+  description: string;
+  daytime6h: WuhanTimeSlotPricing;
+  daytime3h: WuhanTimeSlotPricing;
+  isActive: boolean;
+  shop: '武汉店';
+}
+
+// Shanghai Store: Tier-level pricing (flat structure, no time slots)
+export interface ShanghaiRoomConfig {
+  id: string;
+  roomName: string;
+  category: 'flagship' | 'supreme' | 'luxury' | 'large';
+  description: string;
+  nonMemberPrice: number;
+  groupBuyPrice: number;
+  goldCardPrice: number;
+  platinumCardPrice: number;
+  purpleDiamondPrice: number;
+  blackDiamondPrice: number;
+  isActive: boolean;
+  shop: '上海店';
+}
+
+export type MultiStoreRoomConfig = WuhanRoomConfig | ShanghaiRoomConfig;
+
 export interface RoomConfig {
   id: string;
   roomName: string;
