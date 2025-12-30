@@ -3,7 +3,15 @@ import { Plus, Edit2, Trash2, Eye, Loader2, UserCog, Wallet, ReceiptText } from 
 import { useQuery, useMutation, useQueryClient, useQueries } from '@tanstack/react-query';
 import { MembersApi, RechargesApi, ConsumesApi, SalespersonsApi, MemberBindingsApi } from '@/services/admin';
 import { MemberResp, MemberReq, RechargeApplyCreateReq, MemberBindingReq } from '@/models';
+
+// Extended MemberReq with additional fields
+type ExtendedMemberReq = MemberReq & {
+  cardType?: string;
+  staffId?: number;
+  storeId?: number;
+};
 import SalesSelect from '@/components/SalesSelect';
+import ShopSelect from '@/components/ShopSelect';
 import { CARD_TYPES, CARD_TYPE_THRESHOLDS, calculateCardType } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -43,12 +51,13 @@ export default function UserManagement() {
   const [size] = useState(10);
 
   // Forms
-  const [newMember, setNewMember] = useState<MemberReq>({
+  const [newMember, setNewMember] = useState<ExtendedMemberReq>({
     name: '',
     phone: '',
     cardType: 'ORDINARY' as any,
     idCard: '',
-    salesId: undefined,
+    staffId: undefined,
+    storeId: undefined
   });
 
   const [editForm, setEditForm] = useState<MemberReq>({});
@@ -77,6 +86,7 @@ export default function UserManagement() {
 
   const salespersons = salesResp?.data?.list || [];
   const salesMap = new Map(salespersons.map((s) => [s.id, s.name]));
+  console.log(salespersons,salesMap)
 
   const members = membersResp?.data?.list || [];
   const memberIds = members.map((m) => m.id).filter((id): id is number => typeof id === 'number');
@@ -113,7 +123,7 @@ export default function UserManagement() {
 
   // Mutations
   const createMutation = useMutation({
-    mutationFn: (data: MemberReq) => MembersApi.create(data),
+    mutationFn: (data: ExtendedMemberReq) => MembersApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['members'] });
       toast.success('会员添加成功');
@@ -123,7 +133,8 @@ export default function UserManagement() {
         phone: '',
         cardType: 'ORDINARY' as any,
         idCard: '',
-        salesId: undefined,
+        staffId: undefined,
+        storeId: undefined
       });
     },
     onError: () => toast.error('会员添加失败'),
@@ -514,8 +525,17 @@ export default function UserManagement() {
             <div className="space-y-2">
               <label className="text-sm font-medium">所属业务员</label>
               <SalesSelect
-                value={newMember.salesId}
-                onChange={(id) => setNewMember({ ...newMember, salesId: id })}
+                value={newMember.staffId}
+                onChange={(id) => setNewMember({ ...newMember, staffId: id })}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">所属门店</label>
+              <ShopSelect
+                value={newMember.storeId}
+                onChange={(id) => setNewMember({ ...newMember, storeId: id })}
+                returnId={true}
+                className="w-full"
               />
             </div>
           </div>
